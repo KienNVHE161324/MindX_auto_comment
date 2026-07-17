@@ -7,6 +7,7 @@ import { createIpcHandlers } from './ipcHandlers'
 import { createStorageProvider } from './storage'
 import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
+import { LmsAutomator } from './automation/LmsAutomator'
 import { IPC } from '../shared/types'
 
 function createWindow(): BrowserWindow {
@@ -26,6 +27,11 @@ function createWindow(): BrowserWindow {
   }
   return win
 }
+
+// Singleton automator — browser stays open across IPC calls
+const lmsAutomator = new LmsAutomator(
+  join(app.getPath('userData'), 'lms-browser'),
+)
 
 function registerIpc(): void {
   const configStore = new ConfigStore(app.getPath('userData'))
@@ -71,6 +77,9 @@ function registerIpc(): void {
     getContentRepository,
     extractPdf,
     rewrite,
+    lmsOpenBrowser: () => lmsAutomator.openBrowser(),
+    lmsPostSession: (params) => lmsAutomator.postSession(params),
+    lmsSyncClasses: () => lmsAutomator.syncClasses(),
   })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
@@ -85,6 +94,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.saveContent, (_e, content) => handlers.saveContent(content))
   ipcMain.handle(IPC.extractLessonFromPdf, () => handlers.extractLessonFromPdf())
   ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
+  ipcMain.handle(IPC.lmsOpenBrowser, () => handlers.lmsOpenBrowser())
+  ipcMain.handle(IPC.lmsPostSession, (_e, params) => handlers.lmsPostSession(params))
+  ipcMain.handle(IPC.lmsSyncClasses, () => handlers.lmsSyncClasses())
 }
 
 app.whenReady().then(() => {
@@ -97,4 +109,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  void lmsAutomator.close()
 })

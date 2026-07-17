@@ -1,7 +1,7 @@
 import { GeminiValidationResult } from '../../shared/types'
 
 const MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
-const GEMINI_MODEL = 'gemini-2.0-flash'
+const GEMINI_MODEL = 'gemini-flash-latest'
 const GENERATE_ENDPOINT = `${MODELS_ENDPOINT}/${GEMINI_MODEL}:generateContent`
 
 export interface GeminiPart {
@@ -20,7 +20,15 @@ async function callGemini(
     body: JSON.stringify({ contents: [{ parts }] }),
   })
   if (!res.ok) {
-    throw new Error(`Gemini lỗi HTTP ${res.status}.`)
+    let detail = ''
+    try {
+      const errBody = (await res.json()) as { error?: { message?: string } }
+      if (errBody.error?.message) detail = ` — ${errBody.error.message}`
+    } catch { /* bỏ qua nếu body không phải JSON */ }
+    if (res.status === 429) {
+      throw new Error(`Gemini 429 (quota/rate limit)${detail}`)
+    }
+    throw new Error(`Gemini lỗi HTTP ${res.status}${detail}`)
   }
   const data = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[]

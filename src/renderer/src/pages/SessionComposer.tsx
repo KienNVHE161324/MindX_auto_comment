@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG } from '../../../shared/types'
+import {
+  SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG,
+  LmsPostResult,
+} from '../../../shared/types'
 import { fillTemplate, formatCommentLines, formatSessionDate } from '../../../shared/zaloTemplate'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
@@ -22,6 +25,8 @@ export default function SessionComposer(
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [rewritingIds, setRewritingIds] = useState<Set<string>>(new Set())
+  const [lmsPosting, setLmsPosting] = useState(false)
+  const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
 
   useEffect(() => {
     void window.api.getConfig().then(setConfig)
@@ -73,6 +78,41 @@ export default function SessionComposer(
       setError((err as Error).message)
     } finally {
       setRewritingIds(prev => { const next = new Set(prev); next.delete(studentId); return next })
+    }
+  }
+
+  const postToLms = async (): Promise<void> => {
+    setLmsPosting(true)
+    setLmsResult(null)
+    setError(null)
+    try {
+      // Đảm bảo trình duyệt LMS đang mở
+      const { loggedIn } = await window.api.lmsOpenBrowser()
+      if (!loggedIn) {
+        setError('Chưa đăng nhập LMS. Đăng nhập trong cửa sổ trình duyệt vừa mở, rồi bấm "Gửi lên LMS" lại.')
+        return
+      }
+
+      const sessionDate = session.dateTime.slice(0, 10) // 'YYYY-MM-DD'
+      const comments = cls.students
+        .map(s => {
+          const cm = commentFor(s.id)
+          return { studentName: s.name, text: cm.polished || cm.raw }
+        })
+        .filter(c => c.text.trim() !== '')
+
+      const result = await window.api.lmsPostSession({
+        classCode: cls.code,
+        sessionDate,
+        lessonContent: content.lessonContent,
+        homework: content.homework,
+        comments,
+      })
+      setLmsResult(result)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setLmsPosting(false)
     }
   }
 
@@ -178,6 +218,23 @@ export default function SessionComposer(
       <button onClick={showPreview}>Xem trước</button>{' '}
       <button onClick={save}>Lưu</button>
       {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
+
+      <div style={{ marginTop: 12 }}>
+        <button onClick={postToLms} disabled={lmsPosting}>
+          {lmsPosting ? 'Đang gửi lên LMS...' : 'Gửi lên LMS'}
+        </button>
+        {lmsResult && (
+          <div style={{ marginTop: 8, fontSize: 13 }}>
+            {lmsResult.error && <p style={{ color: 'crimson' }}>{lmsResult.error}</p>}
+            {lmsResult.posted.length > 0 && (
+              <p style={{ color: 'green' }}>Đã nhận xét: {lmsResult.posted.join(', ')}</p>
+            )}
+            {lmsResult.skipped.length > 0 && (
+              <p style={{ color: '#888' }}>Bỏ qua (nghỉ/thiếu nội dung): {lmsResult.skipped.join(', ')}</p>
+            )}
+          </div>
+        )}
+      </div>
 
       {preview !== null && (
         <section style={{ marginTop: 20 }}>

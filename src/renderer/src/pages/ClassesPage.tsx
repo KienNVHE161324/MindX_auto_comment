@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { SchoolClass, ClassSession } from '../../../shared/types'
+import { SchoolClass, ClassSession, LmsScrapedClass } from '../../../shared/types'
 import { newId } from '../../../shared/id'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import ClassEditor from './ClassEditor'
@@ -14,6 +14,8 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<SchoolClass | null>(null)
   const [composing, setComposing] = useState<{ cls: SchoolClass; session: ClassSession } | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncPreview, setSyncPreview] = useState<LmsScrapedClass[] | null>(null)
 
   const reload = async (): Promise<void> => {
     try {
@@ -28,6 +30,52 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   useEffect(() => {
     if (active && !editing && !composing) void reload()
   }, [active, editing, composing])
+
+  const syncFromLms = async (): Promise<void> => {
+    setSyncing(true)
+    setError(null)
+    try {
+      const { loggedIn } = await window.api.lmsOpenBrowser()
+      if (!loggedIn) {
+        setError('Chưa đăng nhập LMS. Đăng nhập trong cửa sổ trình duyệt rồi thử lại.')
+        return
+      }
+      const { classes: scraped } = await window.api.lmsSyncClasses()
+      setSyncPreview(scraped)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const importScraped = async (scraped: LmsScrapedClass[]): Promise<void> => {
+    for (const sc of scraped) {
+      const existing = classes.find(c => c.code === sc.lmsCode)
+      const cls: SchoolClass = existing ?? {
+        id: newId(),
+        code: sc.lmsCode,
+        name: sc.name,
+        students: [],
+        sessions: [],
+      }
+      // Thêm sinh viên mới (không xoá sinh viên cũ)
+      const newStudents = sc.students
+        .filter(s => !cls.students.some(e => e.name === s.name))
+        .map(s => ({ id: newId(), name: s.name }))
+      // Thêm buổi mới (không xoá buổi cũ)
+      const newSessions = sc.sessions
+        .filter(s => !cls.sessions.some(e => e.dateTime.startsWith(s.date)))
+        .map(s => ({ id: newId(), dateTime: `${s.date}T14:00:00` }))
+      await window.api.saveClass({
+        ...cls,
+        students: [...cls.students, ...newStudents],
+        sessions: [...cls.sessions, ...newSessions],
+      })
+    }
+    setSyncPreview(null)
+    await reload()
+  }
 
   const remove = async (id: string): Promise<void> => {
     try {
@@ -52,7 +100,10 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         <h1>Lớp học</h1>
         <div>
           <button onClick={() => void reload()}>Tải lại</button>{' '}
-          <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
+          <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>{' '}
+          <button onClick={() => void syncFromLms()} disabled={syncing}>
+            {syncing ? 'Đang tải từ LMS...' : 'Tự động thêm lớp từ LMS'}
+          </button>
         </div>
       </div>
 
@@ -62,7 +113,23 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         </p>
       )}
 
-      {!error && classes.length === 0 && <p>Chưa có lớp nào.</p>}
+      {syncPreview && (
+        <div style={{ border: '1px solid #aaa', borderRadius: 8, padding: 12, marginBottom: 16, background: '#f9f9f9' }}>
+          <strong>Tìm thấy {syncPreview.length} lớp từ LMS:</strong>
+          <ul style={{ margin: '8px 0 12px', paddingLeft: 20, fontSize: 13 }}>
+            {syncPreview.map(sc => (
+              <li key={sc.lmsCode}>
+                <strong>{sc.lmsCode}</strong> — {sc.name}
+                {' '}({sc.students.length} HS, {sc.sessions.length} buổi)
+              </li>
+            ))}
+          </ul>
+          <button onClick={() => void importScraped(syncPreview)}>Nhập tất cả vào app</button>{' '}
+          <button onClick={() => setSyncPreview(null)}>Hủy</button>
+        </div>
+      )}
+
+      {!error && classes.length === 0 && !syncPreview && <p>Chưa có lớp nào.</p>}
 
       <ul style={{ listStyle: 'none', padding: 0 }}>
         {classes.map(c => (

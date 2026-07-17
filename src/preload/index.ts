@@ -14,6 +14,9 @@ const api: AppApi = {
   saveContent: (content) => ipcRenderer.invoke(IPC.saveContent, content),
   extractLessonFromPdf: () => ipcRenderer.invoke(IPC.extractLessonFromPdf),
   rewriteComment: (studentName, raw) => ipcRenderer.invoke(IPC.rewriteComment, studentName, raw),
+  lmsOpenBrowser: () => ipcRenderer.invoke(IPC.lmsOpenBrowser),
+  lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
+  lmsSyncClasses: () => ipcRenderer.invoke(IPC.lmsSyncClasses),
 }
 
 contextBridge.exposeInMainWorld('api', api)

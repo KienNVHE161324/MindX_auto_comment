@@ -1,4 +1,7 @@
-import { AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent } from '../shared/types'
+import {
+  AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent,
+  LmsPostParams, LmsPostResult, LmsSyncResult,
+} from '../shared/types'
 import { ConfigStore } from './config/configStore'
 import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
@@ -11,6 +14,9 @@ export interface IpcDeps {
   getContentRepository: () => Promise<ContentRepository>
   extractPdf: () => Promise<string>
   rewrite: (studentName: string, raw: string) => Promise<string>
+  lmsOpenBrowser: () => Promise<{ loggedIn: boolean }>
+  lmsPostSession: (params: LmsPostParams) => Promise<LmsPostResult>
+  lmsSyncClasses: () => Promise<LmsSyncResult>
 }
 
 export function createIpcHandlers(deps: IpcDeps): AppApi {
@@ -27,5 +33,8 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
     saveContent: async (content: SessionContent) => (await deps.getContentRepository()).save(content),
     extractLessonFromPdf: () => deps.extractPdf(),
     rewriteComment: (studentName: string, raw: string) => deps.rewrite(studentName, raw),
+    lmsOpenBrowser: () => deps.lmsOpenBrowser(),
+    lmsPostSession: (params: LmsPostParams) => deps.lmsPostSession(params),
+    lmsSyncClasses: () => deps.lmsSyncClasses(),
   }
 }

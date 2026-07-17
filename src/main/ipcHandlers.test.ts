@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createIpcHandlers } from './ipcHandlers'
-import { DEFAULT_CONFIG, SchoolClass, SessionContent } from '../shared/types'
+import { DEFAULT_CONFIG, SchoolClass, SessionContent, LmsPostParams } from '../shared/types'
 
 function makeDeps() {
   const configStore = {
@@ -124,5 +124,48 @@ describe('createIpcHandlers — content & gemini', () => {
     const api = createIpcHandlers(base as never)
     expect(await api.rewriteComment('An', 'ngoan')).toBe('Nhận xét đã sửa')
     expect(base.rewrite).toHaveBeenCalledWith('An', 'ngoan')
+  })
+})
+
+describe('createIpcHandlers — LMS automation', () => {
+  function makeDeps() {
+    return {
+      configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
+      validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
+      getRepository: vi.fn(), getContentRepository: vi.fn(),
+      extractPdf: vi.fn(), rewrite: vi.fn(),
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
+      lmsSyncClasses: vi.fn(async () => ({ classes: [] })),
+    }
+  }
+
+  it('lmsOpenBrowser ủy quyền cho dep', async () => {
+    const deps = makeDeps()
+    const api = createIpcHandlers(deps as never)
+    const res = await api.lmsOpenBrowser()
+    expect(res).toEqual({ loggedIn: true })
+    expect(deps.lmsOpenBrowser).toHaveBeenCalledOnce()
+  })
+
+  it('lmsPostSession truyền params đúng', async () => {
+    const deps = makeDeps()
+    const api = createIpcHandlers(deps as never)
+    const params: LmsPostParams = {
+      classCode: 'A1', sessionDate: '2026-07-20',
+      lessonContent: 'Bài học', homework: 'BT',
+      comments: [{ studentName: 'An', text: 'Ngoan' }],
+    }
+    const res = await api.lmsPostSession(params)
+    expect(res.posted).toEqual(['An'])
+    expect(deps.lmsPostSession).toHaveBeenCalledWith(params)
+  })
+
+  it('lmsSyncClasses ủy quyền cho dep', async () => {
+    const deps = makeDeps()
+    const api = createIpcHandlers(deps as never)
+    const res = await api.lmsSyncClasses()
+    expect(res).toEqual({ classes: [] })
+    expect(deps.lmsSyncClasses).toHaveBeenCalledOnce()
   })
 })

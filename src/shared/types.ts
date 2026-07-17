@@ -69,6 +69,36 @@ export const DEFAULT_CONFIG: AppConfig = {
   commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
 }
 
+// ─── LMS automation types ───────────────────────────────────────────────────
+
+export interface LmsPostParams {
+  classCode: string
+  sessionDate: string  // 'YYYY-MM-DD'
+  lessonContent: string
+  homework: string
+  /** Chỉ truyền HS có mặt + có nội dung nhận xét */
+  comments: { studentName: string; text: string }[]
+}
+
+export interface LmsPostResult {
+  posted: string[]   // tên HS đã được nhận xét
+  skipped: string[]  // tên HS nghỉ hoặc không có nội dung
+  error?: string
+}
+
+export interface LmsScrapedClass {
+  lmsCode: string
+  name: string
+  sessions: { date: string }[]     // 'YYYY-MM-DD'
+  students: { name: string }[]
+}
+
+export interface LmsSyncResult {
+  classes: LmsScrapedClass[]
+}
+
+// ─── IPC ─────────────────────────────────────────────────────────────────────
+
 export const IPC = {
   getConfig: 'config:get',
   updateConfig: 'config:update',
@@ -82,6 +112,9 @@ export const IPC = {
   saveContent: 'content:save',
   extractLessonFromPdf: 'gemini:extractPdf',
   rewriteComment: 'gemini:rewrite',
+  lmsOpenBrowser: 'lms:openBrowser',
+  lmsPostSession: 'lms:postSession',
+  lmsSyncClasses: 'lms:syncClasses',
 } as const
 
 export interface AppApi {
@@ -97,4 +130,7 @@ export interface AppApi {
   saveContent(content: SessionContent): Promise<void>
   extractLessonFromPdf(): Promise<string>
   rewriteComment(studentName: string, raw: string): Promise<string>
+  lmsOpenBrowser(): Promise<{ loggedIn: boolean }>
+  lmsPostSession(params: LmsPostParams): Promise<LmsPostResult>
+  lmsSyncClasses(): Promise<LmsSyncResult>
 }

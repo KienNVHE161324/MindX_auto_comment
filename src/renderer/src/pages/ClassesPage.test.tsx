@@ -34,10 +34,10 @@ describe('ClassesPage', () => {
     expect(screen.getByText(/Lớp A1/)).toBeInTheDocument()
     expect(screen.getByText(/1 học sinh/i)).toBeInTheDocument()
   })
-  it('bấm "Thêm lớp" mở trình soạn (hiện ô Mã lớp)', async () => {
+  it('bấm "+ Thêm lớp" mở trình soạn (hiện ô Mã lớp)', async () => {
     render(<ClassesPage />)
-    await waitFor(() => screen.getByText(/thêm lớp/i))
-    fireEvent.click(screen.getByText(/thêm lớp/i))
+    await waitFor(() => screen.getByText(/^\+ Thêm lớp$/i))
+    fireEvent.click(screen.getByText(/^\+ Thêm lớp$/i))
     await waitFor(() => expect(screen.getByLabelText(/mã lớp/i)).toBeInTheDocument())
   })
   it('bấm "Xóa" gọi deleteClass rồi tải lại', async () => {
