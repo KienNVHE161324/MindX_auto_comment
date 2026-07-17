@@ -1,3 +1,5 @@
+import SettingsPage from './pages/SettingsPage'
+
 export default function App(): JSX.Element {
-  return <h1>MindX Auto Comment</h1>
+  return <SettingsPage />
 }
