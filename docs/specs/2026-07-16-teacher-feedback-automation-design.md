@@ -45,24 +45,24 @@ App cho phép **hẹn giờ theo tuần**; tới giờ tự động đăng LMS r
 └───────────────┬───────────────────────────┬───────────────┘
                 │                           │
                 ▼                           ▼
-   Kho dữ liệu (chọn 1)           💻 Luôn giữ tại máy
-   ☁️ Supabase HOẶC 📁 local      • API key Gemini (riêng mỗi user)
+   Kho dữ liệu: 📁 LOCAL           💻 Luôn giữ tại máy
+   (thư mục người dùng chọn)       • API key Gemini (riêng mỗi user)
       • Lớp & học sinh             • Phiên đăng nhập Zalo/LMS
       • Nội dung mỗi đợt           (KHÔNG đưa lên cloud)
       • Lịch (suy từ LMS) & trạng thái
-      • (Supabase) đăng nhập & phân quyền
+   ☁️ Supabase → PHASE SAU (sau khi app hoàn thành)
 ```
 
 ### Thành phần
 - **Giao diện nhập liệu:** quản lý lớp, soạn nội dung theo tuần, xem trước & duyệt.
 - **Bộ xử lý nền:** đọc PDF, gọi Gemini, chạy bộ hẹn giờ, điều phối đợt gửi.
 - **Playwright:** dùng phiên đăng nhập của người dùng để thao tác LMS & Zalo Web.
-- **Supabase:** kho dữ liệu online chung cho nhiều giáo viên (có đăng nhập + phân quyền).
+- **Lưu trữ local (`StorageProvider`):** kho dữ liệu tại máy cho giai đoạn này; interface cho phép ghép Supabase ở phase sau.
 
 ### Phân tách dữ liệu (quan trọng cho bảo mật)
-- ☁️ **Lên Supabase (chia sẻ):** lớp/học sinh, nội dung mỗi đợt (bản gốc + bản AI đã duyệt), lịch tuần, trạng thái gửi.
-- 💻 **Giữ tại máy (bí mật, không lên cloud):** API key Gemini, phiên đăng nhập Zalo/LMS.
-- Dữ liệu chứa **thông tin cá nhân học sinh** → Supabase bật **đăng nhập + Row-Level Security**: mỗi giáo viên chỉ thấy/sửa lớp của mình.
+- 📁 **Lưu local (giai đoạn hiện tại):** lớp/học sinh, nội dung mỗi đợt (bản gốc + bản AI đã duyệt), lịch, trạng thái gửi — trong thư mục người dùng chọn.
+- 💻 **Bí mật, không lên cloud:** API key Gemini, phiên đăng nhập Zalo/LMS.
+- ☁️ **Supabase (phase sau):** khi thêm cloud, bật **đăng nhập + Row-Level Security** để mỗi giáo viên chỉ thấy/sửa lớp của mình.
 
 ---
 
@@ -172,24 +172,25 @@ Báo cáo cuối: lớp nào đã gửi, lớp nào bỏ qua & vì sao
 
 ## 6. Lưu trữ dữ liệu, xử lý lỗi
 
-### Lưu trữ — 2 lựa chọn backend (người dùng chọn)
-App cho phép **mỗi người dùng chọn nơi lưu dữ liệu lớp/nội dung**:
+### Lưu trữ — LOCAL trước, database online để PHASE SAU
 
-**Lựa chọn A — Supabase (kho online chung):**
-- Lớp & học sinh (mã lớp, tên, mapping tới nhóm Zalo + trang LMS), nội dung mỗi đợt (bài học, nhận xét gốc + bản AI đã duyệt, bài tập), lịch (suy từ LMS), trạng thái gửi.
-- Có đăng nhập + phân quyền RLS. Hợp khi muốn dùng nhiều máy / nhiều người / có sao lưu cloud.
+> **Quyết định (cập nhật 2026-07-17):** Toàn bộ app được xây & hoàn thiện với **lưu trữ local** trước. **Database online (Supabase) chuyển sang một phase riêng, làm SAU KHI app đã hoàn thành.** Mục tiêu: có app chạy được đầy đủ tính năng cho một người dùng trước, rồi mới bổ sung đồng bộ cloud/đa người dùng.
 
-**Lựa chọn B — Thư mục local do người dùng chỉ định:**
-- Toàn bộ dữ liệu lưu vào **thư mục người dùng tự chọn** trên máy họ (file cục bộ).
-- Hợp khi muốn giữ dữ liệu tại máy, offline, tự sao lưu bằng cách copy thư mục.
-- Vì mỗi giáo viên chỉ thao tác lớp của mình nên bản local vẫn dùng tốt cho một người.
+**Giai đoạn hiện tại — Thư mục local do người dùng chỉ định:**
+- Toàn bộ dữ liệu (lớp & học sinh, nội dung mỗi đợt: bài học + nhận xét gốc + bản AI đã duyệt + bài tập, lịch suy từ LMS, trạng thái gửi) lưu vào **thư mục người dùng tự chọn** trên máy họ (file cục bộ).
+- Sao lưu dễ bằng cách copy thư mục; chạy offline.
+- Kiến trúc dùng interface `StorageProvider` để sau này ghép thêm backend online mà không phải viết lại phần trên.
 
-> Bất kể chọn A hay B: **API key Gemini và phiên đăng nhập Zalo/LMS luôn giữ tại máy**, không đưa lên cloud.
+**Phase sau (sau khi app hoàn thành) — Supabase (kho online chung):**
+- Thêm `SupabaseStorageProvider` sau interface đã có; đăng nhập + phân quyền RLS; đồng bộ nhiều máy/nhiều người, sao lưu cloud.
+- Người dùng sẽ có tùy chọn chuyển từ local sang Supabase ở phase này.
+
+> **API key Gemini và phiên đăng nhập Zalo/LMS luôn giữ tại máy**, không đưa lên cloud (cả bây giờ lẫn phase sau).
 
 ### Mô hình nhiều người dùng
 - **Mỗi giáo viên chỉ xem được lớp mình sở hữu.** Quyền sở hữu **lấy từ LMS** — lớp nào tài khoản LMS của họ tải xuống được thì là của họ.
-- Với backend Supabase: RLS đảm bảo mỗi người chỉ đọc/sửa lớp của mình.
-- Với backend local: dữ liệu vốn nằm tại máy từng người nên tách biệt tự nhiên.
+- Ở giai đoạn local: dữ liệu vốn nằm tại máy từng người nên tách biệt tự nhiên.
+- Ở phase Supabase (sau): RLS đảm bảo mỗi người chỉ đọc/sửa lớp của mình.
 
 ### Xử lý lỗi (quy tắc)
 - Không vào được web (Tầng 1) → chỉ thông báo, không làm gì.
@@ -202,14 +203,16 @@ App cho phép **mỗi người dùng chọn nơi lưu dữ liệu lớp/nội du
 
 ## 7. Phạm vi bản đầu tiên (MVP) — theo thứ tự
 
-1. **Nền tảng app + lưu trữ** — chọn backend (Supabase / thư mục local), cấu hình **API key Gemini riêng** cho người dùng.
+1. **Nền tảng app + lưu trữ LOCAL** — cấu hình thư mục local + **API key Gemini riêng** cho người dùng.
 2. **Quản lý lớp** — nút **"Tự động thêm lớp"** từ LMS (danh sách học sinh + số buổi kèm thời điểm); mỗi GV chỉ thấy lớp của mình.
 3. **Nhập liệu + Gemini** (trích PDF, sửa nhận xét, xem trước, **soạn trước nhiều tuần**) — *dùng được ngay để soạn dù gửi tay*.
 4. **Tự động LMS** (điền + đọc điểm danh + lọc em nghỉ) ở **chế độ chạy thử**.
 5. **Tự động Zalo Web** (tìm nhóm bằng mã lớp, gửi 1 tin dài theo format cố định) ở chế độ chạy thử.
 6. **Hẹn giờ theo buổi (suy từ LMS) + nút "Tiếp tục" + báo cáo** → bật chạy thật.
 
-> Cách chia này cho **công cụ soạn nội dung dùng được từ bước 2**, rồi mới tới phần tự động hoá (khó & cần bảo trì).
+**➡️ Phase sau (SAU KHI app hoàn thành):** thêm **database online Supabase** (đăng nhập, phân quyền, đồng bộ đa máy/đa người dùng) qua `SupabaseStorageProvider` ghép vào interface đã có.
+
+> Cách chia này cho **công cụ soạn nội dung dùng được từ bước 2**, rồi mới tới phần tự động hoá (khó & cần bảo trì). Database online để cuối cùng nên không chặn tiến độ app.
 
 ---
 
@@ -221,7 +224,7 @@ App cho phép **mỗi người dùng chọn nơi lưu dữ liệu lớp/nội du
 | LMS/Zalo đổi giao diện → kịch bản hỏng | Chế độ chạy thử; dừng an toàn khi gặp phần tử lạ; thiết kế selector dễ chỉnh |
 | Gemini free chạm giới hạn | Xử lý theo lô; báo & cho thử lại; không chặn lớp khác |
 | Gửi trùng | Theo dõi trạng thái từng lớp; "Tiếp tục" bỏ qua lớp đã gửi |
-| Lộ thông tin học sinh | Phân quyền RLS trên Supabase; bí mật (key, phiên) giữ tại máy |
+| Lộ thông tin học sinh | Giai đoạn local: dữ liệu nằm tại máy từng người; bí mật (key, phiên) giữ tại máy. Phase Supabase (sau): thêm phân quyền RLS |
 | Máy tắt lúc tới giờ | Nhắc lại các lớp tới hạn chưa gửi khi mở app |
 
 ---
