@@ -1,0 +1,76 @@
+import { useState } from 'react'
+import { SchoolClass, Student, ClassSession } from '../../../shared/types'
+import { newId } from '../../../shared/id'
+
+export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone: () => void }): JSX.Element {
+  const [draft, setDraft] = useState<SchoolClass>(cls)
+
+  const set = <K extends keyof SchoolClass>(k: K, v: SchoolClass[K]): void =>
+    setDraft(prev => ({ ...prev, [k]: v }))
+
+  const addStudent = (): void =>
+    set('students', [...draft.students, { id: newId(), name: '' } as Student])
+  const setStudent = (id: string, name: string): void =>
+    set('students', draft.students.map(s => (s.id === id ? { ...s, name } : s)))
+  const removeStudent = (id: string): void =>
+    set('students', draft.students.filter(s => s.id !== id))
+
+  const addSession = (): void =>
+    set('sessions', [...draft.sessions, { id: newId(), dateTime: '' } as ClassSession])
+  const setSession = (id: string, dateTime: string): void =>
+    set('sessions', draft.sessions.map(s => (s.id === id ? { ...s, dateTime } : s)))
+  const removeSession = (id: string): void =>
+    set('sessions', draft.sessions.filter(s => s.id !== id))
+
+  const save = async (): Promise<void> => {
+    await window.api.saveClass(draft)
+    onDone()
+  }
+
+  return (
+    <div style={{ padding: 24, maxWidth: 720 }}>
+      <button onClick={onDone}>← Quay lại</button>
+      <h2>Soạn lớp</h2>
+
+      <div style={{ marginBottom: 12 }}>
+        <label htmlFor="cls-code">Mã lớp</label><br />
+        <input id="cls-code" value={draft.code} onChange={e => set('code', e.target.value)} />
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <label htmlFor="cls-name">Tên lớp</label><br />
+        <input id="cls-name" value={draft.name} onChange={e => set('name', e.target.value)} style={{ width: 360 }} />
+      </div>
+
+      <h3>Học sinh</h3>
+      {draft.students.map(s => (
+        <div key={s.id} style={{ marginBottom: 6 }}>
+          <input
+            placeholder="Tên học sinh"
+            value={s.name}
+            onChange={e => setStudent(s.id, e.target.value)}
+          />{' '}
+          <button aria-label={`Xóa học sinh ${s.name}`} onClick={() => removeStudent(s.id)}>×</button>
+        </div>
+      ))}
+      <button onClick={addStudent}>+ Thêm học sinh</button>
+
+      <h3 style={{ marginTop: 20 }}>Buổi học</h3>
+      {draft.sessions.map(s => (
+        <div key={s.id} style={{ marginBottom: 6 }}>
+          <input
+            type="datetime-local"
+            aria-label="Thời điểm buổi"
+            value={s.dateTime}
+            onChange={e => setSession(s.id, e.target.value)}
+          />{' '}
+          <button aria-label="Xóa buổi" onClick={() => removeSession(s.id)}>×</button>
+        </div>
+      ))}
+      <button onClick={addSession}>+ Thêm buổi</button>
+
+      <div style={{ marginTop: 24 }}>
+        <button onClick={save}>Lưu</button>
+      </div>
+    </div>
+  )
+}
