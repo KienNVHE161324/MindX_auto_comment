@@ -159,6 +159,7 @@ export default function SessionComposer(
       {preview !== null && (
         <section style={{ marginTop: 20 }}>
           <h3>Xem trước tin nhắn Zalo</h3>
+          <button onClick={() => void navigator.clipboard.writeText(preview)}>Copy tin nhắn</button>
           <pre aria-label="Xem trước Zalo" style={{ whiteSpace: 'pre-wrap', background: '#f6f6f6', padding: 12 }}>
             {preview}
           </pre>

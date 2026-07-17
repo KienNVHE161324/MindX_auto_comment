@@ -75,6 +75,18 @@ describe('SessionComposer', () => {
     expect(pre.textContent).toContain('Làm bài 5')
   })
 
+  it('"Copy tin nhắn" ghi tin xem trước vào clipboard', async () => {
+    const writeText = vi.fn(async () => {})
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByLabelText(/nội dung bài học/i))
+    fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'Phép cộng' } })
+    fireEvent.click(screen.getByText(/xem trước/i))
+    await screen.findByLabelText(/xem trước zalo/i)
+    fireEvent.click(screen.getByText(/copy tin nhắn/i))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Phép cộng'))
+  })
+
   it('"Lưu" gọi saveContent', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
