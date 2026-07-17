@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { ConfigStore } from './config/configStore'
 import { validateGeminiApiKey } from './gemini/geminiClient'
 import { createIpcHandlers } from './ipcHandlers'
+import { createStorageProvider } from './storage'
+import { ClassRepository } from './classes/ClassRepository'
 import { IPC } from '../shared/types'
 
 function createWindow(): BrowserWindow {
@@ -29,12 +31,20 @@ function registerIpc(): void {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
   }
-  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder })
+  const getRepository = async (): Promise<ClassRepository> => {
+    const cfg = await configStore.load()
+    return new ClassRepository(createStorageProvider(cfg))
+  }
+  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder, getRepository })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
   ipcMain.handle(IPC.updateConfig, (_e, patch) => handlers.updateConfig(patch))
   ipcMain.handle(IPC.validateGeminiKey, (_e, apiKey: string) => handlers.validateGeminiKey(apiKey))
   ipcMain.handle(IPC.pickFolder, () => handlers.pickFolder())
+  ipcMain.handle(IPC.listClasses, () => handlers.listClasses())
+  ipcMain.handle(IPC.getClass, (_e, id: string) => handlers.getClass(id))
+  ipcMain.handle(IPC.saveClass, (_e, cls) => handlers.saveClass(cls))
+  ipcMain.handle(IPC.deleteClass, (_e, id: string) => handlers.deleteClass(id))
 }
 
 app.whenReady().then(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createIpcHandlers } from './ipcHandlers'
-import { DEFAULT_CONFIG } from '../shared/types'
+import { DEFAULT_CONFIG, SchoolClass } from '../shared/types'
 
 function makeDeps() {
   const configStore = {
@@ -40,5 +40,43 @@ describe('createIpcHandlers', () => {
     const deps = makeDeps()
     const api = createIpcHandlers(deps as never)
     expect(await api.pickFolder()).toBe('/chosen')
+  })
+})
+
+describe('createIpcHandlers — class methods', () => {
+  function makeClassDeps() {
+    const repo = {
+      list: vi.fn(async () => [] as SchoolClass[]),
+      get: vi.fn(async () => null),
+      save: vi.fn(async () => {}),
+      delete: vi.fn(async () => {}),
+    }
+    const base = {
+      configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
+      validateGeminiKey: vi.fn(),
+      pickFolder: vi.fn(),
+      getRepository: vi.fn(async () => repo),
+    }
+    return { base, repo }
+  }
+
+  it('listClasses ủy quyền cho repo.list', async () => {
+    const { base, repo } = makeClassDeps()
+    const api = createIpcHandlers(base as never)
+    await api.listClasses()
+    expect(repo.list).toHaveBeenCalledOnce()
+  })
+  it('saveClass ủy quyền cho repo.save', async () => {
+    const { base, repo } = makeClassDeps()
+    const api = createIpcHandlers(base as never)
+    const c: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [], sessions: [] }
+    await api.saveClass(c)
+    expect(repo.save).toHaveBeenCalledWith(c)
+  })
+  it('deleteClass ủy quyền cho repo.delete', async () => {
+    const { base, repo } = makeClassDeps()
+    const api = createIpcHandlers(base as never)
+    await api.deleteClass('c1')
+    expect(repo.delete).toHaveBeenCalledWith('c1')
   })
 })
