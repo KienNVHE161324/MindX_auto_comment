@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { SchoolClass } from '../../../shared/types'
+import { SchoolClass, ClassSession } from '../../../shared/types'
 import { newId } from '../../../shared/id'
+import { formatSessionDate } from '../../../shared/zaloTemplate'
 import ClassEditor from './ClassEditor'
+import SessionComposer from './SessionComposer'
 
 function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
@@ -11,6 +13,7 @@ export default function ClassesPage(): JSX.Element {
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<SchoolClass | null>(null)
+  const [composing, setComposing] = useState<{ cls: SchoolClass; session: ClassSession } | null>(null)
 
   const reload = async (): Promise<void> => {
     try {
@@ -22,8 +25,8 @@ export default function ClassesPage(): JSX.Element {
   }
 
   useEffect(() => {
-    if (!editing) void reload()
-  }, [editing])
+    if (!editing && !composing) void reload()
+  }, [editing, composing])
 
   const remove = async (id: string): Promise<void> => {
     try {
@@ -32,6 +35,10 @@ export default function ClassesPage(): JSX.Element {
     } catch (err) {
       setError((err as Error).message)
     }
+  }
+
+  if (composing) {
+    return <SessionComposer cls={composing.cls} session={composing.session} onDone={() => setComposing(null)} />
   }
 
   if (editing) {
@@ -68,6 +75,19 @@ export default function ClassesPage(): JSX.Element {
                 <button aria-label={`Xóa lớp ${c.code}`} onClick={() => remove(c.id)}>Xóa</button>
               </div>
             </div>
+            {c.sessions.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13, color: '#666' }}>Soạn nội dung theo buổi:</div>
+                {c.sessions.map(ss => (
+                  <div key={ss.id} style={{ marginTop: 4 }}>
+                    <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>{' '}
+                    <button aria-label={`Soạn nội dung ${c.code} ${ss.dateTime}`} onClick={() => setComposing({ cls: c, session: ss })}>
+                      Soạn nội dung
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </li>
         ))}
       </ul>

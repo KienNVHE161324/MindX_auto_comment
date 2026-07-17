@@ -95,6 +95,19 @@ export default function SettingsPage(): JSX.Element {
         />
       </section>
 
+      <section style={{ marginBottom: 24 }}>
+        <h2>Văn phong nhận xét</h2>
+        <label htmlFor="style-hint">Văn phong nhận xét (Gemini dùng khi sửa nhận xét)</label>
+        <br />
+        <textarea
+          id="style-hint"
+          value={config.commentStyleHint}
+          onChange={e => set('commentStyleHint', e.target.value)}
+          rows={2}
+          style={{ width: '100%' }}
+        />
+      </section>
+
       <button onClick={save}>Lưu</button>
       {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
     </div>
