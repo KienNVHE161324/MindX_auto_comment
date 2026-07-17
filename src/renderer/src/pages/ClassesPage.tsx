@@ -26,8 +26,12 @@ export default function ClassesPage(): JSX.Element {
   }, [editing])
 
   const remove = async (id: string): Promise<void> => {
-    await window.api.deleteClass(id)
-    await reload()
+    try {
+      await window.api.deleteClass(id)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    }
   }
 
   if (editing) {

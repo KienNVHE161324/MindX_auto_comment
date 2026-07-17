@@ -66,6 +66,12 @@ describe('createIpcHandlers — class methods', () => {
     await api.listClasses()
     expect(repo.list).toHaveBeenCalledOnce()
   })
+  it('getClass ủy quyền cho repo.get', async () => {
+    const { base, repo } = makeClassDeps()
+    const api = createIpcHandlers(base as never)
+    await api.getClass('c1')
+    expect(repo.get).toHaveBeenCalledWith('c1')
+  })
   it('saveClass ủy quyền cho repo.save', async () => {
     const { base, repo } = makeClassDeps()
     const api = createIpcHandlers(base as never)

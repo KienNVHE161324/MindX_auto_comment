@@ -48,4 +48,14 @@ describe('ClassEditor', () => {
     fireEvent.click(screen.getByText(/quay lại/i))
     expect(onDone).toHaveBeenCalled()
   })
+  it('Lưu thất bại hiển thị lỗi và KHÔNG gọi onDone', async () => {
+    const api = stub()
+    api.saveClass = vi.fn(async () => { throw new Error('Chưa chọn thư mục') })
+    ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+    const onDone = vi.fn()
+    render(<ClassEditor cls={base} onDone={onDone} />)
+    fireEvent.click(screen.getByText(/^lưu$/i))
+    await waitFor(() => expect(screen.getByText(/lưu thất bại/i)).toBeInTheDocument())
+    expect(onDone).not.toHaveBeenCalled()
+  })
 })
