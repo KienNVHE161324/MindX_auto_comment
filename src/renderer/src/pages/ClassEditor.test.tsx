@@ -9,7 +9,7 @@ function stub() {
     getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
     listClasses: vi.fn(), getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(),
   }
-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
   return api
 }
 beforeEach(() => stub())
@@ -51,7 +51,7 @@ describe('ClassEditor', () => {
   it('Lưu thất bại hiển thị lỗi và KHÔNG gọi onDone', async () => {
     const api = stub()
     api.saveClass = vi.fn(async () => { throw new Error('Chưa chọn thư mục') })
-    ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+    ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
     const onDone = vi.fn()
     render(<ClassEditor cls={base} onDone={onDone} />)
     fireEvent.click(screen.getByText(/^lưu$/i))

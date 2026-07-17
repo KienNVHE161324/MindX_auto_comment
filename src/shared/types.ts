@@ -5,6 +5,7 @@ export interface AppConfig {
   localFolderPath: string | null
   geminiApiKey: string | null
   zaloMessageTemplate: string
+  commentStyleHint: string
 }
 
 export interface GeminiValidationResult {
@@ -33,6 +34,21 @@ export interface SchoolClass {
   sessions: ClassSession[]
 }
 
+export interface StudentComment {
+  studentId: string
+  raw: string
+  polished: string
+}
+
+export interface SessionContent {
+  id: string
+  classId: string
+  sessionId: string
+  lessonContent: string
+  homework: string
+  comments: StudentComment[]
+}
+
 export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
 Nội dung bài học:
 {noi_dung_bai_hoc}
@@ -42,11 +58,15 @@ Bài tập về nhà:
 {bai_tap_ve_nha}
 Cảm ơn phụ huynh và các con!`
 
+export const DEFAULT_COMMENT_STYLE_HINT =
+  'nhẹ nhàng, khách quan, đúng mực, đúng văn phong giáo viên'
+
 export const DEFAULT_CONFIG: AppConfig = {
   storageBackend: 'local',
   localFolderPath: null,
   geminiApiKey: null,
   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
+  commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
 }
 
 export const IPC = {
@@ -58,6 +78,10 @@ export const IPC = {
   getClass: 'class:get',
   saveClass: 'class:save',
   deleteClass: 'class:delete',
+  getContent: 'content:get',
+  saveContent: 'content:save',
+  extractLessonFromPdf: 'gemini:extractPdf',
+  rewriteComment: 'gemini:rewrite',
 } as const
 
 export interface AppApi {
@@ -69,4 +93,8 @@ export interface AppApi {
   getClass(id: string): Promise<SchoolClass | null>
   saveClass(cls: SchoolClass): Promise<void>
   deleteClass(id: string): Promise<void>
+  getContent(sessionId: string): Promise<SessionContent | null>
+  saveContent(content: SessionContent): Promise<void>
+  extractLessonFromPdf(): Promise<string>
+  rewriteComment(studentName: string, raw: string): Promise<string>
 }

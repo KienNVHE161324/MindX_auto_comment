@@ -12,7 +12,7 @@ function stubApi(overrides: Partial<Window['api']> = {}) {
     pickFolder: vi.fn(async () => '/data/mindx'),
     ...overrides,
   }
-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
   return api
 }
 

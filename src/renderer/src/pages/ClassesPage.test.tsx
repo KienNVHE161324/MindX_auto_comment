@@ -11,7 +11,7 @@ function stub(overrides: Partial<Window['api']> = {}) {
     getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(async () => {}),
     ...overrides,
   }
-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
   return api
 }
 beforeEach(() => stub())

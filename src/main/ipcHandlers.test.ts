@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createIpcHandlers } from './ipcHandlers'
-import { DEFAULT_CONFIG, SchoolClass } from '../shared/types'
+import { DEFAULT_CONFIG, SchoolClass, SessionContent } from '../shared/types'
 
 function makeDeps() {
   const configStore = {
@@ -84,5 +84,45 @@ describe('createIpcHandlers — class methods', () => {
     const api = createIpcHandlers(base as never)
     await api.deleteClass('c1')
     expect(repo.delete).toHaveBeenCalledWith('c1')
+  })
+})
+
+describe('createIpcHandlers — content & gemini', () => {
+  function makeDeps() {
+    const contentRepo = { get: vi.fn(async () => null), save: vi.fn(async () => {}) }
+    const base = {
+      configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
+      validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
+      getRepository: vi.fn(),
+      getContentRepository: vi.fn(async () => contentRepo),
+      extractPdf: vi.fn(async () => 'Nội dung PDF'),
+      rewrite: vi.fn(async () => 'Nhận xét đã sửa'),
+    }
+    return { base, contentRepo }
+  }
+
+  it('getContent ủy quyền cho contentRepo.get', async () => {
+    const { base, contentRepo } = makeDeps()
+    const api = createIpcHandlers(base as never)
+    await api.getContent('s1')
+    expect(contentRepo.get).toHaveBeenCalledWith('s1')
+  })
+  it('saveContent ủy quyền cho contentRepo.save', async () => {
+    const { base, contentRepo } = makeDeps()
+    const api = createIpcHandlers(base as never)
+    const c: SessionContent = { id: 's1', classId: 'c1', sessionId: 's1', lessonContent: '', homework: '', comments: [] }
+    await api.saveContent(c)
+    expect(contentRepo.save).toHaveBeenCalledWith(c)
+  })
+  it('extractLessonFromPdf ủy quyền cho extractPdf', async () => {
+    const { base } = makeDeps()
+    const api = createIpcHandlers(base as never)
+    expect(await api.extractLessonFromPdf()).toBe('Nội dung PDF')
+  })
+  it('rewriteComment ủy quyền cho rewrite với đúng tham số', async () => {
+    const { base } = makeDeps()
+    const api = createIpcHandlers(base as never)
+    expect(await api.rewriteComment('An', 'ngoan')).toBe('Nhận xét đã sửa')
+    expect(base.rewrite).toHaveBeenCalledWith('An', 'ngoan')
   })
 })

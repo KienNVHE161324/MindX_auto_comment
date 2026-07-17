@@ -1,10 +1,12 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { ConfigStore } from './config/configStore'
-import { validateGeminiApiKey } from './gemini/geminiClient'
+import { validateGeminiApiKey, extractLessonContent, rewriteComment } from './gemini/geminiClient'
 import { createIpcHandlers } from './ipcHandlers'
 import { createStorageProvider } from './storage'
 import { ClassRepository } from './classes/ClassRepository'
+import { ContentRepository } from './content/ContentRepository'
 import { IPC } from '../shared/types'
 
 function createWindow(): BrowserWindow {
@@ -35,7 +37,41 @@ function registerIpc(): void {
     const cfg = await configStore.load()
     return new ClassRepository(createStorageProvider(cfg))
   }
-  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder, getRepository })
+  const getContentRepository = async (): Promise<ContentRepository> => {
+    const cfg = await configStore.load()
+    return new ContentRepository(createStorageProvider(cfg))
+  }
+  const requireApiKey = async (): Promise<string> => {
+    const cfg = await configStore.load()
+    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    return cfg.geminiApiKey
+  }
+  const extractPdf = async (): Promise<string> => {
+    const apiKey = await requireApiKey()
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      throw new Error('Chưa chọn file PDF.')
+    }
+    const bytes = await fs.readFile(result.filePaths[0])
+    return extractLessonContent(apiKey, bytes.toString('base64'))
+  }
+  const rewrite = async (studentName: string, raw: string): Promise<string> => {
+    const cfg = await configStore.load()
+    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    return rewriteComment(cfg.geminiApiKey, studentName, raw, cfg.commentStyleHint)
+  }
+  const handlers = createIpcHandlers({
+    configStore,
+    validateGeminiKey: validateGeminiApiKey,
+    pickFolder,
+    getRepository,
+    getContentRepository,
+    extractPdf,
+    rewrite,
+  })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
   ipcMain.handle(IPC.updateConfig, (_e, patch) => handlers.updateConfig(patch))
@@ -45,6 +81,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.getClass, (_e, id: string) => handlers.getClass(id))
   ipcMain.handle(IPC.saveClass, (_e, cls) => handlers.saveClass(cls))
   ipcMain.handle(IPC.deleteClass, (_e, id: string) => handlers.deleteClass(id))
+  ipcMain.handle(IPC.getContent, (_e, sessionId: string) => handlers.getContent(sessionId))
+  ipcMain.handle(IPC.saveContent, (_e, content) => handlers.saveContent(content))
+  ipcMain.handle(IPC.extractLessonFromPdf, () => handlers.extractLessonFromPdf())
+  ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
 }
 
 app.whenReady().then(() => {

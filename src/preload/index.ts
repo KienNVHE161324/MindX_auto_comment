@@ -10,6 +10,10 @@ const api: AppApi = {
   getClass: (id) => ipcRenderer.invoke(IPC.getClass, id),
   saveClass: (cls) => ipcRenderer.invoke(IPC.saveClass, cls),
   deleteClass: (id) => ipcRenderer.invoke(IPC.deleteClass, id),
+  getContent: (sessionId) => ipcRenderer.invoke(IPC.getContent, sessionId),
+  saveContent: (content) => ipcRenderer.invoke(IPC.saveContent, content),
+  extractLessonFromPdf: () => ipcRenderer.invoke(IPC.extractLessonFromPdf),
+  rewriteComment: (studentName, raw) => ipcRenderer.invoke(IPC.rewriteComment, studentName, raw),
 }
 
 contextBridge.exposeInMainWorld('api', api)
