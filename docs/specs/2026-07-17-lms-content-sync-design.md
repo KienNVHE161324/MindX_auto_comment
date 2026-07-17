@@ -38,10 +38,10 @@ Thay thế `lmsSyncClasses` (đổi tên/mở rộng). `LmsAutomator` xử lý 2
 **Phần nội dung** — với từng `contentTarget`:
 1. `findAndOpenClass(classCode)` (tái dùng helper có sẵn).
 2. Vào tab "Nhận xét" (tương tự `clickTab` trong `postSession`).
-3. Tìm nút buổi theo `sessionDate` (tái dùng cách match ngày trong `selectSession`), bấm vào.
-4. Kiểm tra buổi đã có nội dung chưa (đọc ô "Tổng kết" — nếu rỗng/không có → coi là "chưa điền", bỏ qua lớp này, sang lớp tiếp theo).
-5. Nếu đã có: đọc `lessonContent` (Tổng kết), `homework` (Bài về nhà).
-6. Với từng dòng học sinh trong bảng: xác định `attended` (dựa theo text "Có mặt"/"Nghỉ có phép" — tái dùng cách check trong `processComments`). Nếu có mặt, mở popup "Nhận xét học sinh" đọc text đã lưu sẵn trong textarea/contenteditable (nếu popup có ô nhận xét trống thì `comment: ''`).
+3. Tìm buổi theo `sessionDate` trong carousel `div[id^="class-comments-slot-carousel-"]` (mỗi buổi 1 div con, buổi đang chọn có class `active`; ngày hiển thị dạng `dd/mm` hoặc — nếu là buổi đang active — `HH:mm  dd/mm/yyyy`), bấm vào đúng buổi.
+4. Đọc khối "Tổng kết": tìm `div.jss2713.jss2705` có chứa `span` text khớp `/Tổng k/i` (site viết sai chính tả "Tổng két"), nội dung nằm trong `div.jss2714 .jss2722`. Nếu container này có class `place-holder` → **chưa điền** → bỏ qua lớp này (không lỗi), sang lớp tiếp theo. Nếu không có `place-holder` → lấy `innerText` làm `lessonContent`.
+5. Đọc khối "Bài về nhà" tương tự (header text `/Bài.*nhà/i`) — nếu khối đang thu gọn (icon `ExpandMoreIcon` thay vì `ExpandLessIcon`) thì bấm header để mở trước khi đọc. Cùng quy tắc `place-holder` = rỗng.
+6. Với từng dòng trong `table` bên trong `div.comment-list-table`: tên ở `.name-display`; cột Comment nếu chứa text cố định "Không thể viết nhận xét cho học viên vắng mặt" → `attended = false` (không mở popup). Ngược lại (`attended = true`, gồm cả trạng thái "Đi muộn") → bấm nút "Nhận xét học sinh" trong dòng đó để mở popup (`role="dialog"`), đọc nội dung tại `.jss2989 .jss2722` (giữ nguyên text kể cả tiền tố "- Đánh giá chung: " nếu có — lưu nguyên văn theo mục tiêu #5). Nếu vùng đó có class `place-holder`/rỗng → `comment: ''`. Đóng popup trước khi sang học sinh kế tiếp.
 
 Trả về:
 ```ts
@@ -92,13 +92,11 @@ export interface SessionContent {
 
 `SessionComposer.tsx` — hàm `showPreview()` và `postToLms()`: khi build `danh_sach_nhan_xet` / `comments`, loại các `Student` có `id` nằm trong `content.absentStudentIds` (mặc định `[]` nếu field không tồn tại — tương thích ngược với `SessionContent` cũ đã lưu trước đây).
 
-## Phụ thuộc cần trước khi code phần đọc DOM
+## Selector đã xác nhận từ HTML thực tế (2026-07-17)
 
-Phần đọc tab "Nhận xét" (bước 2.4–2.6 ở trên) cần biết chính xác cấu trúc HTML thực tế của:
-- Ô "Tổng kết" / "Bài về nhà" khi **đã có sẵn nội dung** (để phân biệt "đã điền" vs "chưa điền", và lấy đúng text — có thể là rich text nên cần biết lấy `innerText` hay theo từng đoạn).
-- Popup "Nhận xét học sinh" khi mở lại 1 học sinh **đã có nhận xét sẵn** — để biết selector/format đọc lại text đã lưu.
+Đã nhận HTML mẫu từ người dùng cho: carousel buổi học, khối Tổng kết (đã điền), khối Bài về nhà (rỗng, đã mở rộng), bảng học sinh (đủ 3 trạng thái Có mặt/Đi muộn/Nghỉ có phép), popup "Nhận xét học sinh" (đã có nội dung sẵn). Các selector ở mục 2.3–2.6 phía trên lấy trực tiếp từ mẫu này — không còn là giả định, có thể implement thẳng.
 
-→ Sẽ xin bạn gửi HTML debug hoặc screenshot cấu trúc này trước khi bắt đầu implement bước đọc DOM cụ thể (các bước khác — merge logic, data model, UI tóm tắt — có thể làm trước, không phụ thuộc).
+Rủi ro còn lại (chấp nhận được, không chặn implement): tên class css (`jss2722`, `jss2713`...) do MUI style injection nên **có thể đổi số giữa các lần load trang** — ưu tiên match theo text nội dung (`Tổng két`, `Bài về nhà`, `Nhận xét học sinh`, "Không thể viết nhận xét...") và cấu trúc tương đối (header → sibling content) hơn là số class cụ thể, giống cách `LmsAutomator` hiện tại đã làm với `filter({ hasText })`.
 
 ## Ngoài phạm vi
 
