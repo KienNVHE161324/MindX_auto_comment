@@ -81,7 +81,7 @@ export default function ClassesPage(): JSX.Element {
                 {c.sessions.map(ss => (
                   <div key={ss.id} style={{ marginTop: 4 }}>
                     <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>{' '}
-                    <button aria-label={`Soạn nội dung ${c.code} ${ss.dateTime}`} onClick={() => setComposing({ cls: c, session: ss })}>
+                    <button aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`} onClick={() => setComposing({ cls: c, session: ss })}>
                       Soạn nội dung
                     </button>
                   </div>

@@ -24,7 +24,11 @@ export class LocalStorageProvider implements StorageProvider {
 
   async write<T>(collection: string, id: string, data: T): Promise<void> {
     await fs.mkdir(this.dirOf(collection), { recursive: true })
-    await fs.writeFile(this.pathOf(collection, id), JSON.stringify(data, null, 2), 'utf-8')
+    // Ghi atomic: ghi file tạm rồi đổi tên, tránh để lại file JSON hỏng nếu gián đoạn giữa chừng.
+    const target = this.pathOf(collection, id)
+    const tmp = `${target}.tmp`
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+    await fs.rename(tmp, target)
   }
 
   async list<T>(collection: string): Promise<T[]> {

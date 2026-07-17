@@ -54,10 +54,18 @@ export function rewriteComment(
   styleHint: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<string> {
+  // Tách dữ liệu người dùng (tên, nhận xét thô) khỏi phần chỉ dẫn bằng nhãn + dấu phân cách,
+  // không nội suy vào trong dấu nháy để tránh phá ranh giới prompt / prompt-injection.
   const prompt =
-    `Viết lại nhận xét sau cho học sinh "${studentName}" theo văn phong: ${styleHint}. ` +
-    'Giữ đúng ý gốc, không thêm thông tin bịa, độ dài khoảng 1-2 câu. Chỉ trả về câu nhận xét đã viết lại.\n' +
-    `Nhận xét gốc: "${raw}"`
+    'Bạn là trợ lý giúp giáo viên viết lại nhận xét học sinh cho khách quan, đúng mực.\n' +
+    `Văn phong yêu cầu: ${styleHint}\n` +
+    'Giữ đúng ý gốc, KHÔNG thêm thông tin bịa, độ dài khoảng 1-2 câu. ' +
+    'Chỉ trả về câu nhận xét đã viết lại, không thêm lời dẫn.\n' +
+    `Tên học sinh: ${studentName}\n` +
+    'Nhận xét thô của giáo viên (giữa hai dấu phân cách):\n' +
+    '---\n' +
+    raw +
+    '\n---'
   return callGemini(apiKey, [{ text: prompt }], fetchFn)
 }
 

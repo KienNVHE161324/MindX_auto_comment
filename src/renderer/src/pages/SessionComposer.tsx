@@ -25,15 +25,26 @@ export default function SessionComposer(
   useEffect(() => {
     void window.api.getConfig().then(setConfig)
     void window.api.getContent(session.id).then(existing => {
-      if (existing) setContent(existing)
+      if (!existing) return
+      // Đồng bộ nhận xét theo roster hiện tại: giữ nhận xét cũ của HS còn trong lớp,
+      // thêm entry rỗng cho HS mới, loại nhận xét của HS đã bị xóa khỏi lớp.
+      const comments = cls.students.map(
+        s => existing.comments.find(c => c.studentId === s.id) ?? { studentId: s.id, raw: '', polished: '' },
+      )
+      setContent({ ...existing, comments })
     })
-  }, [session.id])
+  }, [session.id, cls])
+
+  const mutate = (updater: (prev: SessionContent) => SessionContent): void => {
+    setContent(updater)
+    setSaved(false)
+  }
 
   const commentFor = (studentId: string): StudentComment =>
     content.comments.find(c => c.studentId === studentId) ?? { studentId, raw: '', polished: '' }
 
   const setComment = (studentId: string, patch: Partial<StudentComment>): void =>
-    setContent(prev => {
+    mutate(prev => {
       const exists = prev.comments.some(c => c.studentId === studentId)
       const comments = exists
         ? prev.comments.map(c => (c.studentId === studentId ? { ...c, ...patch } : c))
@@ -44,7 +55,7 @@ export default function SessionComposer(
   const loadPdf = async (): Promise<void> => {
     try {
       const text = await window.api.extractLessonFromPdf()
-      setContent(prev => ({ ...prev, lessonContent: text }))
+      mutate(prev => ({ ...prev, lessonContent: text }))
       setError(null)
     } catch (err) {
       setError((err as Error).message)
@@ -97,7 +108,7 @@ export default function SessionComposer(
           rows={6}
           style={{ width: '100%' }}
           value={content.lessonContent}
-          onChange={e => setContent(prev => ({ ...prev, lessonContent: e.target.value }))}
+          onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
         />
         <div><button onClick={loadPdf}>Nạp PDF &amp; trích</button></div>
       </section>
@@ -137,7 +148,7 @@ export default function SessionComposer(
           rows={3}
           style={{ width: '100%' }}
           value={content.homework}
-          onChange={e => setContent(prev => ({ ...prev, homework: e.target.value }))}
+          onChange={e => mutate(prev => ({ ...prev, homework: e.target.value }))}
         />
       </section>
 

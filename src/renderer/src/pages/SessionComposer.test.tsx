@@ -84,6 +84,31 @@ describe('SessionComposer', () => {
     expect(screen.getByText(/đã lưu/i)).toBeInTheDocument()
   })
 
+  it('đồng bộ nhận xét theo roster: loại HS đã xóa, thêm HS mới khi tải content cũ', async () => {
+    const api = stub({
+      getContent: vi.fn(async () => ({
+        id: 'ss1', classId: 'c1', sessionId: 'ss1', lessonContent: '', homework: '',
+        comments: [{ studentId: 's_old', raw: 'cũ', polished: 'cũ' }], // HS không còn trong lớp
+      })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
+    fireEvent.click(screen.getByText(/^lưu$/i))
+    await waitFor(() => expect(api.saveContent).toHaveBeenCalled())
+    const saveMock = api.saveContent as unknown as ReturnType<typeof vi.fn>
+    const saved = saveMock.mock.calls[0][0] as { comments: { studentId: string }[] }
+    expect(saved.comments.map(c => c.studentId)).toEqual(['s1'])
+  })
+
+  it('badge "Đã lưu" biến mất khi sửa tiếp sau khi lưu', async () => {
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByLabelText(/nội dung bài học/i))
+    fireEvent.click(screen.getByText(/^lưu$/i))
+    await waitFor(() => expect(screen.getByText(/đã lưu/i)).toBeInTheDocument())
+    fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'sửa thêm' } })
+    expect(screen.queryByText(/đã lưu/i)).not.toBeInTheDocument()
+  })
+
   it('AI sửa thất bại hiển thị lỗi', async () => {
     stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
