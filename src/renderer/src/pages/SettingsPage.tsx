@@ -19,7 +19,11 @@ export default function SettingsPage(): JSX.Element {
 
   const chooseFolder = async (): Promise<void> => {
     const folder = await window.api.pickFolder()
-    if (folder) set('localFolderPath', folder)
+    if (folder) {
+      set('localFolderPath', folder)
+      // Lưu ngay thư mục để tab Lớp học dùng được mà không cần bấm "Lưu".
+      await window.api.updateConfig({ localFolderPath: folder })
+    }
   }
 
   const checkKey = async (): Promise<void> => {

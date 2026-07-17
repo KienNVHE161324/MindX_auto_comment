@@ -37,10 +37,25 @@ describe('ClassEditor', () => {
     await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1', code: 'B2' })))
     await waitFor(() => expect(onDone).toHaveBeenCalled())
   })
-  it('thêm buổi học tạo ô datetime mới', () => {
+  it('thêm buổi học tạo ô ngày + chọn giờ mới', () => {
     render(<ClassEditor cls={base} onDone={() => {}} />)
     fireEvent.click(screen.getByText(/thêm buổi/i))
-    expect(screen.getAllByLabelText(/thời điểm buổi/i).length).toBe(1)
+    expect(screen.getAllByLabelText(/ngày buổi/i).length).toBe(1)
+    expect(screen.getAllByLabelText(/giờ buổi/i).length).toBe(1)
+  })
+
+  it('chọn ngày + giờ lưu dateTime dạng chỉ có giờ (phút = 00)', async () => {
+    const api = stub()
+    render(<ClassEditor cls={base} onDone={() => {}} />)
+    fireEvent.click(screen.getByText(/thêm buổi/i))
+    fireEvent.change(screen.getByLabelText(/ngày buổi/i), { target: { value: '2026-07-20' } })
+    fireEvent.change(screen.getByLabelText(/giờ buổi/i), { target: { value: '18' } })
+    fireEvent.click(screen.getByText(/^lưu$/i))
+    await waitFor(() =>
+      expect(api.saveClass).toHaveBeenCalledWith(
+        expect.objectContaining({ sessions: [{ id: expect.any(String), dateTime: '2026-07-20T18:00:00' }] }),
+      ),
+    )
   })
   it('"Quay lại" gọi onDone', () => {
     const onDone = vi.fn()

@@ -9,7 +9,7 @@ function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
 }
 
-export default function ClassesPage(): JSX.Element {
+export default function ClassesPage({ active = true }: { active?: boolean }): JSX.Element {
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<SchoolClass | null>(null)
@@ -24,9 +24,10 @@ export default function ClassesPage(): JSX.Element {
     }
   }
 
+  // Tải lại khi tab được mở (active) và không đang soạn/sửa — để nhận thư mục vừa cấu hình.
   useEffect(() => {
-    if (!editing && !composing) void reload()
-  }, [editing, composing])
+    if (active && !editing && !composing) void reload()
+  }, [active, editing, composing])
 
   const remove = async (id: string): Promise<void> => {
     try {
@@ -49,7 +50,10 @@ export default function ClassesPage(): JSX.Element {
     <div style={{ padding: 24, maxWidth: 720, fontFamily: 'system-ui' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Lớp học</h1>
-        <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
+        <div>
+          <button onClick={() => void reload()}>Tải lại</button>{' '}
+          <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
+        </div>
       </div>
 
       {error && (

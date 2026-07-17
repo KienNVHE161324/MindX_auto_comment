@@ -10,7 +10,13 @@ export default function App(): JSX.Element {
         <button onClick={() => setTab('classes')} disabled={tab === 'classes'}>Lớp học</button>
         <button onClick={() => setTab('settings')} disabled={tab === 'settings'}>Cấu hình</button>
       </nav>
-      {tab === 'classes' ? <ClassesPage /> : <SettingsPage />}
+      {/* Giữ cả 2 tab luôn mounted (chỉ ẩn/hiện) để không mất dữ liệu đang nhập khi chuyển tab. */}
+      <div style={{ display: tab === 'classes' ? 'block' : 'none' }}>
+        <ClassesPage active={tab === 'classes'} />
+      </div>
+      <div style={{ display: tab === 'settings' ? 'block' : 'none' }}>
+        <SettingsPage />
+      </div>
     </div>
   )
 }

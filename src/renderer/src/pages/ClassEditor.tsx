@@ -2,6 +2,15 @@ import { useState } from 'react'
 import { SchoolClass } from '../../../shared/types'
 import { newId } from '../../../shared/id'
 
+function splitDateTime(iso: string): { date: string; hour: string } {
+  const m = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})/)
+  return m ? { date: m[1], hour: m[2] } : { date: '', hour: '' }
+}
+function combineDateTime(date: string, hour: string): string {
+  if (!date) return ''
+  return `${date}T${(hour || '00').padStart(2, '0')}:00:00`
+}
+
 export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone: () => void }): JSX.Element {
   const [draft, setDraft] = useState<SchoolClass>(cls)
   const [error, setError] = useState<string | null>(null)
@@ -61,17 +70,30 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
       <button onClick={addStudent}>+ Thêm học sinh</button>
 
       <h3 style={{ marginTop: 20 }}>Buổi học</h3>
-      {draft.sessions.map(s => (
-        <div key={s.id} style={{ marginBottom: 6 }}>
-          <input
-            type="datetime-local"
-            aria-label="Thời điểm buổi"
-            value={s.dateTime}
-            onChange={e => setSession(s.id, e.target.value)}
-          />{' '}
-          <button aria-label={`Xóa buổi ${s.dateTime || s.id}`} onClick={() => removeSession(s.id)}>×</button>
-        </div>
-      ))}
+      {draft.sessions.map(s => {
+        const { date, hour } = splitDateTime(s.dateTime)
+        return (
+          <div key={s.id} style={{ marginBottom: 6 }}>
+            <input
+              type="date"
+              aria-label="Ngày buổi"
+              value={date}
+              onChange={e => setSession(s.id, combineDateTime(e.target.value, hour))}
+            />{' '}
+            <select
+              aria-label="Giờ buổi"
+              value={hour}
+              onChange={e => setSession(s.id, combineDateTime(date, e.target.value))}
+            >
+              <option value="">-- giờ --</option>
+              {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).map(h => (
+                <option key={h} value={h}>{h}h</option>
+              ))}
+            </select>{' '}
+            <button aria-label={`Xóa buổi ${s.dateTime || s.id}`} onClick={() => removeSession(s.id)}>×</button>
+          </div>
+        )
+      })}
       <button onClick={addSession}>+ Thêm buổi</button>
 
       <div style={{ marginTop: 24 }}>
