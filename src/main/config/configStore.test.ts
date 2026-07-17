@@ -41,4 +41,16 @@ describe('ConfigStore', () => {
     expect(cfg.geminiApiKey).toBe('x')
     expect(cfg.zaloMessageTemplate).toBe(DEFAULT_CONFIG.zaloMessageTemplate)
   })
+
+  it('load trả DEFAULT_CONFIG khi file config.json hỏng (không phải JSON)', async () => {
+    await fs.writeFile(join(dir, 'config.json'), '{ hỏng không phải json', 'utf-8')
+    expect(await new ConfigStore(dir).load()).toEqual(DEFAULT_CONFIG)
+  })
+
+  it('save không để lại file tạm sau khi ghi', async () => {
+    const store = new ConfigStore(dir)
+    await store.save(DEFAULT_CONFIG)
+    const files = await fs.readdir(dir)
+    expect(files).toEqual(['config.json'])
+  })
 })
