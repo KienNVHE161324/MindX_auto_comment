@@ -77,9 +77,16 @@ function registerIpc(): void {
     getContentRepository,
     extractPdf,
     rewrite,
-    lmsOpenBrowser: () => lmsAutomator.openBrowser(),
+    lmsOpenBrowser: async () => {
+      const cfg = await configStore.load()
+      return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
+    },
     lmsPostSession: (params) => lmsAutomator.postSession(params),
-    lmsSyncClasses: () => lmsAutomator.syncClasses(),
+    lmsSyncClasses: async () => {
+      const repo = await getRepository()
+      const existing = await repo.list()
+      return lmsAutomator.syncClasses(existing.map(c => c.code))
+    },
   })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())

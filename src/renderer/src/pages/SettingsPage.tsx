@@ -112,6 +112,34 @@ export default function SettingsPage(): JSX.Element {
         />
       </section>
 
+      <section style={{ marginBottom: 24 }}>
+        <h2>Tài khoản LMS</h2>
+        <p style={{ fontSize: 13, color: '#666', margin: '0 0 8px' }}>
+          App sẽ tự đăng nhập LMS khi cần — không phải nhập thủ công mỗi lần.
+        </p>
+        <div style={{ marginBottom: 8 }}>
+          <label htmlFor="lms-email">Email LMS</label><br />
+          <input
+            id="lms-email"
+            type="email"
+            value={config.lmsEmail ?? ''}
+            onChange={e => set('lmsEmail', e.target.value || null)}
+            style={{ width: 280 }}
+            placeholder="email@mindx.edu.vn"
+          />
+        </div>
+        <div>
+          <label htmlFor="lms-password">Mật khẩu LMS</label><br />
+          <input
+            id="lms-password"
+            type="password"
+            value={config.lmsPassword ?? ''}
+            onChange={e => set('lmsPassword', e.target.value || null)}
+            style={{ width: 280 }}
+          />
+        </div>
+      </section>
+
       <button onClick={save}>Lưu</button>
       {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
     </div>

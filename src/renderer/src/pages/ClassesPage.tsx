@@ -9,6 +9,23 @@ function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
 }
 
+type ClassStatus = 'chưa bắt đầu' | 'đang diễn ra' | 'đã kết thúc'
+
+function getClassStatus(sessions: ClassSession[]): ClassStatus {
+  if (sessions.length === 0) return 'chưa bắt đầu'
+  const now = new Date()
+  const dates = sessions.map(s => new Date(s.dateTime)).sort((a, b) => a.getTime() - b.getTime())
+  if (now < dates[0]) return 'chưa bắt đầu'
+  if (now > dates[dates.length - 1]) return 'đã kết thúc'
+  return 'đang diễn ra'
+}
+
+const STATUS_STYLE: Record<ClassStatus, { background: string; color: string }> = {
+  'chưa bắt đầu': { background: '#e3f2fd', color: '#1565c0' },
+  'đang diễn ra':  { background: '#e8f5e9', color: '#2e7d32' },
+  'đã kết thúc':   { background: '#f5f5f5', color: '#757575' },
+}
+
 export default function ClassesPage({ active = true }: { active?: boolean }): JSX.Element {
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -16,11 +33,23 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [composing, setComposing] = useState<{ cls: SchoolClass; session: ClassSession } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncPreview, setSyncPreview] = useState<LmsScrapedClass[] | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const [commentedSessions, setCommentedSessions] = useState<Set<string>>(new Set())
 
   const reload = async (): Promise<void> => {
     try {
-      setClasses(await window.api.listClasses())
+      const list = await window.api.listClasses()
+      setClasses(list)
       setError(null)
+      // Kiểm tra buổi nào đã có nội dung được lưu (để hiện "Đã nhận xét")
+      const now = new Date()
+      const pastIds = list.flatMap(c =>
+        c.sessions.filter(s => new Date(s.dateTime) < now).map(s => s.id)
+      )
+      const results = await Promise.all(pastIds.map(id => window.api.getContent(id)))
+      const commented = new Set<string>()
+      pastIds.forEach((id, i) => { if (results[i]) commented.add(id) })
+      setCommentedSessions(commented)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -33,17 +62,17 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
 
   const syncFromLms = async (): Promise<void> => {
     setSyncing(true)
-    setError(null)
+    setSyncError(null)
     try {
       const { loggedIn } = await window.api.lmsOpenBrowser()
       if (!loggedIn) {
-        setError('Chưa đăng nhập LMS. Đăng nhập trong cửa sổ trình duyệt rồi thử lại.')
+        setSyncError('Hết thời gian chờ đăng nhập LMS (3 phút). Thử lại sau khi đăng nhập.')
         return
       }
       const { classes: scraped } = await window.api.lmsSyncClasses()
       setSyncPreview(scraped)
     } catch (err) {
-      setError((err as Error).message)
+      setSyncError((err as Error).message)
     } finally {
       setSyncing(false)
     }
@@ -112,6 +141,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
           Không tải được danh sách lớp: {error}. Hãy chọn thư mục lưu dữ liệu trong tab Cấu hình.
         </p>
       )}
+      {syncError && <p style={{ color: 'crimson' }}>Lỗi kết nối LMS: {syncError}</p>}
 
       {syncPreview && (
         <div style={{ border: '1px solid #aaa', borderRadius: 8, padding: 12, marginBottom: 16, background: '#f9f9f9' }}>
@@ -136,7 +166,21 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
           <li key={c.id} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <strong>{c.code}</strong> — {c.name}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <strong>{c.code}</strong> — {c.name}
+                  {(() => {
+                    const status = getClassStatus(c.sessions)
+                    const s = STATUS_STYLE[status]
+                    return (
+                      <span style={{
+                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
+                        background: s.background, color: s.color, fontWeight: 600,
+                      }}>
+                        {status}
+                      </span>
+                    )
+                  })()}
+                </div>
                 <div style={{ color: '#666', fontSize: 13 }}>
                   {c.students.length} học sinh · {c.sessions.length} buổi
                 </div>
@@ -149,14 +193,25 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
             {c.sessions.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 13, color: '#666' }}>Soạn nội dung theo buổi:</div>
-                {c.sessions.map(ss => (
-                  <div key={ss.id} style={{ marginTop: 4 }}>
-                    <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>{' '}
-                    <button aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`} onClick={() => setComposing({ cls: c, session: ss })}>
-                      Soạn nội dung
-                    </button>
-                  </div>
-                ))}
+                {c.sessions.map(ss => {
+                  const isPast = new Date(ss.dateTime) < new Date()
+                  const hasComment = commentedSessions.has(ss.id)
+                  return (
+                    <div key={ss.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
+                      {isPast && hasComment ? (
+                        <span style={{ fontSize: 12, color: '#2e7d32', fontWeight: 600 }}>✓ Đã nhận xét</span>
+                      ) : (
+                        <button
+                          aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
+                          onClick={() => setComposing({ cls: c, session: ss })}
+                        >
+                          Soạn nội dung
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </li>

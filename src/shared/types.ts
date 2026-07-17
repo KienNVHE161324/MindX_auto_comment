@@ -6,6 +6,8 @@ export interface AppConfig {
   geminiApiKey: string | null
   zaloMessageTemplate: string
   commentStyleHint: string
+  lmsEmail: string | null
+  lmsPassword: string | null
 }
 
 export interface GeminiValidationResult {
@@ -67,6 +69,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   geminiApiKey: null,
   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
   commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
+  lmsEmail: null,
+  lmsPassword: null,
 }
 
 // ─── LMS automation types ───────────────────────────────────────────────────

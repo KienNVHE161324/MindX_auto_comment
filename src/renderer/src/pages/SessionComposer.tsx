@@ -26,6 +26,7 @@ export default function SessionComposer(
   const [saved, setSaved] = useState(false)
   const [rewritingIds, setRewritingIds] = useState<Set<string>>(new Set())
   const [lmsPosting, setLmsPosting] = useState(false)
+  const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
 
   useEffect(() => {
@@ -86,12 +87,13 @@ export default function SessionComposer(
     setLmsResult(null)
     setError(null)
     try {
-      // Đảm bảo trình duyệt LMS đang mở
+      setLmsStatus('Đang kết nối LMS...')
       const { loggedIn } = await window.api.lmsOpenBrowser()
       if (!loggedIn) {
-        setError('Chưa đăng nhập LMS. Đăng nhập trong cửa sổ trình duyệt vừa mở, rồi bấm "Gửi lên LMS" lại.')
+        setError('Hết thời gian chờ đăng nhập LMS (3 phút). Thử lại sau khi đăng nhập.')
         return
       }
+      setLmsStatus('Đang gửi nhận xét...')
 
       const sessionDate = session.dateTime.slice(0, 10) // 'YYYY-MM-DD'
       const comments = cls.students
@@ -113,6 +115,7 @@ export default function SessionComposer(
       setError((err as Error).message)
     } finally {
       setLmsPosting(false)
+      setLmsStatus('')
     }
   }
 
@@ -221,7 +224,7 @@ export default function SessionComposer(
 
       <div style={{ marginTop: 12 }}>
         <button onClick={postToLms} disabled={lmsPosting}>
-          {lmsPosting ? 'Đang gửi lên LMS...' : 'Gửi lên LMS'}
+          {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
         {lmsResult && (
           <div style={{ marginTop: 8, fontSize: 13 }}>
