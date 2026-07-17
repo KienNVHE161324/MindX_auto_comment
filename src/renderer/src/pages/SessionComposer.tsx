@@ -21,6 +21,7 @@ export default function SessionComposer(
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [rewritingIds, setRewritingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     void window.api.getConfig().then(setConfig)
@@ -63,12 +64,15 @@ export default function SessionComposer(
   }
 
   const aiRewrite = async (studentId: string, name: string): Promise<void> => {
+    setRewritingIds(prev => new Set(prev).add(studentId))
     try {
       const polished = await window.api.rewriteComment(name, commentFor(studentId).raw)
       setComment(studentId, { polished })
       setError(null)
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      setRewritingIds(prev => { const next = new Set(prev); next.delete(studentId); return next })
     }
   }
 
@@ -118,24 +122,43 @@ export default function SessionComposer(
         {cls.students.length === 0 && <p>Lớp chưa có học sinh.</p>}
         {cls.students.map(s => {
           const cm = commentFor(s.id)
+          const isRewriting = rewritingIds.has(s.id)
           return (
             <div key={s.id} style={{ borderBottom: '1px solid #eee', paddingBottom: 8, marginBottom: 8 }}>
-              <strong>{s.name}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <strong>{s.name}</strong>
+                {cm.polished && <span style={{ fontSize: 12, color: '#888' }}>(AI đã sửa)</span>}
+              </div>
               <textarea
-                aria-label={`Nhận xét thô ${s.name}`}
+                aria-label={`Nhận xét ${s.name}`}
                 rows={2}
-                style={{ width: '100%' }}
-                value={cm.raw}
-                onChange={e => setComment(s.id, { raw: e.target.value })}
+                style={{ width: '100%', marginTop: 4 }}
+                value={cm.polished || cm.raw}
+                onChange={e => {
+                  if (cm.polished) {
+                    setComment(s.id, { polished: e.target.value })
+                  } else {
+                    setComment(s.id, { raw: e.target.value })
+                  }
+                }}
               />
-              <button aria-label={`AI sửa ${s.name}`} onClick={() => aiRewrite(s.id, s.name)}>AI sửa</button>
-              <textarea
-                aria-label={`Nhận xét đã sửa ${s.name}`}
-                rows={2}
-                style={{ width: '100%' }}
-                value={cm.polished}
-                onChange={e => setComment(s.id, { polished: e.target.value })}
-              />
+              <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
+                <button
+                  aria-label={`AI sửa ${s.name}`}
+                  disabled={isRewriting}
+                  onClick={() => aiRewrite(s.id, s.name)}
+                >
+                  {isRewriting ? 'Đang sửa...' : 'Sửa bằng AI'}
+                </button>
+                {cm.polished && (
+                  <button
+                    aria-label={`Hoàn tác ${s.name}`}
+                    onClick={() => setComment(s.id, { polished: '' })}
+                  >
+                    Hoàn tác
+                  </button>
+                )}
+              </div>
             </div>
           )
         })}

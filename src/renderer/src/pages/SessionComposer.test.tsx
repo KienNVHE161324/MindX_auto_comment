@@ -31,7 +31,7 @@ describe('SessionComposer', () => {
   it('hiển thị học sinh trong lớp', async () => {
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => expect(screen.getByText('An')).toBeInTheDocument())
-    expect(screen.getByLabelText(/nhận xét thô An/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^nhận xét An$/i)).toBeInTheDocument()
   })
 
   it('tải nội dung đã lưu nếu có', async () => {
@@ -51,21 +51,24 @@ describe('SessionComposer', () => {
     expect(api.extractLessonFromPdf).toHaveBeenCalled()
   })
 
-  it('"AI sửa" điền nhận xét đã sửa', async () => {
+  it('"Sửa bằng AI" điền kết quả vào ô duy nhất, "Hoàn tác" phục hồi về bản thô', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
-    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
-    fireEvent.change(screen.getByLabelText(/nhận xét thô An/i), { target: { value: 'ngoan' } })
+    await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
     fireEvent.click(screen.getByLabelText(/AI sửa An/i))
-    await waitFor(() => expect(screen.getByLabelText(/nhận xét đã sửa An/i)).toHaveValue('Em An ngoan, tích cực.'))
+    await waitFor(() => expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('Em An ngoan, tích cực.'))
     expect(api.rewriteComment).toHaveBeenCalledWith('An', 'ngoan')
+    expect(screen.getByLabelText(/hoàn tác An/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText(/hoàn tác An/i))
+    expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('ngoan')
   })
 
   it('"Xem trước" dựng tin Zalo có tên lớp, bài học, nhận xét, bài tập', async () => {
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
-    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
+    await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
     fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'Phép cộng' } })
-    fireEvent.change(screen.getByLabelText(/nhận xét thô An/i), { target: { value: 'ngoan' } })
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
     fireEvent.change(screen.getByLabelText(/bài tập về nhà/i), { target: { value: 'Làm bài 5' } })
     fireEvent.click(screen.getByText(/xem trước/i))
     const pre = await screen.findByLabelText(/xem trước zalo/i)
@@ -104,7 +107,7 @@ describe('SessionComposer', () => {
       })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
-    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
+    await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
     fireEvent.click(screen.getByText(/^lưu$/i))
     await waitFor(() => expect(api.saveContent).toHaveBeenCalled())
     const saveMock = api.saveContent as unknown as ReturnType<typeof vi.fn>
@@ -124,7 +127,7 @@ describe('SessionComposer', () => {
   it('AI sửa thất bại hiển thị lỗi', async () => {
     stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
-    await waitFor(() => screen.getByLabelText(/AI sửa An/i))
+    await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
     fireEvent.click(screen.getByLabelText(/AI sửa An/i))
     await waitFor(() => expect(screen.getByText(/chưa cấu hình api key/i)).toBeInTheDocument())
   })

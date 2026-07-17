@@ -57,6 +57,21 @@ describe('ClassEditor', () => {
       ),
     )
   })
+  it('thay ngày giữ nguyên giờ đã chọn', async () => {
+    const api = stub()
+    render(<ClassEditor cls={base} onDone={() => {}} />)
+    fireEvent.click(screen.getByText(/thêm buổi/i))
+    fireEvent.change(screen.getByLabelText(/ngày buổi/i), { target: { value: '2026-07-20' } })
+    fireEvent.change(screen.getByLabelText(/giờ buổi/i), { target: { value: '14' } })
+    fireEvent.change(screen.getByLabelText(/ngày buổi/i), { target: { value: '2026-07-21' } })
+    fireEvent.click(screen.getByText(/^lưu$/i))
+    await waitFor(() =>
+      expect(api.saveClass).toHaveBeenCalledWith(
+        expect.objectContaining({ sessions: [{ id: expect.any(String), dateTime: '2026-07-21T14:00:00' }] }),
+      ),
+    )
+  })
+
   it('"Quay lại" gọi onDone', () => {
     const onDone = vi.fn()
     render(<ClassEditor cls={base} onDone={onDone} />)

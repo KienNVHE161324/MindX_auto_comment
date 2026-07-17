@@ -32,6 +32,12 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
   const removeSession = (id: string): void =>
     setDraft(prev => ({ ...prev, sessions: prev.sessions.filter(s => s.id !== id) }))
 
+  // Khi chọn giờ mà chưa có ngày, mặc định dùng ngày hôm nay để giờ không bị mất.
+  const selectHour = (id: string, newHour: string, currentDate: string): void => {
+    const effectiveDate = currentDate || new Date().toISOString().slice(0, 10)
+    setSession(id, combineDateTime(effectiveDate, newHour))
+  }
+
   const save = async (): Promise<void> => {
     try {
       await window.api.saveClass(draft)
@@ -83,7 +89,7 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
             <select
               aria-label="Giờ buổi"
               value={hour}
-              onChange={e => setSession(s.id, combineDateTime(date, e.target.value))}
+              onChange={e => selectHour(s.id, e.target.value, date)}
             >
               <option value="">-- giờ --</option>
               {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).map(h => (
