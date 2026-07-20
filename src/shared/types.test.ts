@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_CONFIG, DEFAULT_ZALO_TEMPLATE } from './types'
+import { DEFAULT_CONFIG, DEFAULT_ZALO_TEMPLATE, IPC } from './types'
 
 describe('DEFAULT_CONFIG', () => {
   it('mặc định backend là local, không có key/thư mục', () => {
@@ -16,5 +16,11 @@ describe('DEFAULT_CONFIG', () => {
 
   it('DEFAULT_CONFIG dùng đúng template mặc định', () => {
     expect(DEFAULT_CONFIG.zaloMessageTemplate).toBe(DEFAULT_ZALO_TEMPLATE)
+  })
+})
+
+describe('IPC lms sync', () => {
+  it('dùng key lms:syncAll (thay cho lms:syncClasses cũ)', () => {
+    expect(IPC.lmsSyncAll).toBe('lms:syncAll')
   })
 })

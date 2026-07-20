@@ -49,6 +49,7 @@ export interface SessionContent {
   lessonContent: string
   homework: string
   comments: StudentComment[]
+  absentStudentIds?: string[]
 }
 
 export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
@@ -101,6 +102,26 @@ export interface LmsSyncResult {
   classes: LmsScrapedClass[]
 }
 
+export interface LmsContentTarget {
+  classCode: string
+  sessionId: string
+  sessionDate: string  // 'YYYY-MM-DD'
+}
+
+export interface LmsContentResult {
+  classCode: string
+  sessionDate: string  // 'YYYY-MM-DD'
+  lessonContent: string
+  homework: string
+  students: { name: string; attended: boolean; comment: string }[]
+}
+
+export interface LmsSyncAllResult {
+  newClasses: LmsScrapedClass[]
+  contentResults: LmsContentResult[]
+  skippedClasses: string[]
+}
+
 // ─── IPC ─────────────────────────────────────────────────────────────────────
 
 export const IPC = {
@@ -118,7 +139,7 @@ export const IPC = {
   rewriteComment: 'gemini:rewrite',
   lmsOpenBrowser: 'lms:openBrowser',
   lmsPostSession: 'lms:postSession',
-  lmsSyncClasses: 'lms:syncClasses',
+  lmsSyncAll: 'lms:syncAll',
 } as const
 
 export interface AppApi {
@@ -136,5 +157,5 @@ export interface AppApi {
   rewriteComment(studentName: string, raw: string): Promise<string>
   lmsOpenBrowser(): Promise<{ loggedIn: boolean }>
   lmsPostSession(params: LmsPostParams): Promise<LmsPostResult>
-  lmsSyncClasses(): Promise<LmsSyncResult>
+  lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
 }
