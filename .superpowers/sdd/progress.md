@@ -21,3 +21,35 @@ Ghi chú lệch so với plan: fixture test trong `ClassesPage.test.tsx` (Task 6
 
 ### Còn lại (thủ công, không có test tự động)
 - Task 4 / Step 6: chạy `npm run dev`, bấm "Đồng bộ từ LMS" với lớp thật đã điền nội dung buổi gần nhất trên LMS, xác nhận selector (`selectCommentSession`/`readExpandableSection`/`readStudentComments`) đọc đúng. Nếu sai, cần HTML/console log thật để chỉnh — không tự đoán selector.
+
+---
+
+## Milestone 5 — Lưu/xem nội dung + trạng thái + gửi tự động (đã làm)
+
+- [x] `SessionContent.postedToLms` + trạng thái 3 mức (chưa có / đã soạn / đã nhận xét) — SessionComposer đánh dấu khi gửi LMS thành công. Commit 284f3a9.
+- [x] Nút "Sao chép buổi trước" (`shared/sessionContent.ts`: copySessionContent/findPreviousSession/getSessionContentStatus). Commit 284f3a9.
+- [x] Gửi tự động theo giờ hẹn mỗi lớp:
+  - `shared/autoSend.ts` (planAutoSend/isAutoSendDue/nearestPastSession/buildZaloMessage). Commit 777b675.
+  - `main/automation/AutoSendScheduler.ts` — gửi LMS tự động + **ghi tin Zalo ra file .txt trong Documents/'MindX Auto Comment - Zalo tu dong'** (chưa tự động điều khiển Zalo Desktop thật — cần khảo sát UI Zalo). Idempotent qua cờ `postedToLms`/`zaloSentAt` → có cơ chế gửi bù khi mở app trễ. Commit 0bc96ae.
+  - Khởi động scheduler khi app ready, tick mỗi 60s + tick ngay lúc mở. Commit 19efe42.
+  - UI bật/tắt + giờ hẹn trong ClassEditor. Commit 4ca0c12.
+
+## Milestone 6 — Thiết kế lại UI (đã làm)
+
+- [x] `styles.css` design system (tokens + .btn/.card/.section/.badge/.input/.modal...) + import ở main.tsx. Commit 2186ca1.
+- [x] Nav có brand + tab active; các trang chuyển sang section/card/input nhất quán. Commit 2186ca1.
+- [x] `ConfirmDialog` — hộp xác nhận khi xóa lớp. Commit 2186ca1.
+- [x] Icon Sửa/Xóa đổi sang SVG đơn sắc (`components/Icons.tsx`), đóng khung; nút Soạn/Xem-Sửa cùng bề rộng; mark màu buổi đã qua; tiến độ = "đã qua X/Y buổi" (nhỏ, trên dòng meta). Commit 27e5d4f, 2e5c2cd.
+
+## Milestone 7 — Lấy giờ buổi học thật từ LMS (một phần)
+
+- [x] `scrapeSessions` đọc thêm giờ bắt đầu (`hh:mm`) từ DOM; `importScraped` dùng giờ thật, fallback 14:00. Commit 5fc9a31.
+
+Tổng: **146 tests xanh**, `npm run typecheck` sạch, `npm run build` OK.
+
+### ⚠️ TỒN ĐỌNG — giờ buổi học vẫn ra 14:00 (chưa xử lý xong)
+Người dùng báo: đồng bộ về vẫn 14:00 dù buổi thật là 08:00. Hai nghi vấn (chưa xác nhận được):
+1. **Dữ liệu cũ**: `scrapeAllClasses` bỏ qua các lớp đã có trong app → lịch không đọc lại; giờ 14:00 lưu từ trước vẫn còn. Muốn refresh phải xóa lớp rồi thêm lại, HOẶC bổ sung tính năng cập-nhật-lịch cho lớp đã có.
+2. **Sai DOM**: `scrapeSessions` chạy trong tab "Schedule" của **drawer**; DOM người dùng gửi (có ô `hh:mm`) là trang **"Cài đặt lịch"** đầy đủ. Nếu tab Schedule trong drawer KHÔNG có ô `hh:mm`, code lấy không ra giờ → fallback 14:00.
+
+**Cần để xử lý dứt điểm:** HTML/console-log thật của tab "Schedule" trong drawer chi tiết lớp (không phải trang Cài đặt lịch), hoặc quyết định đổi luồng scrape sang trang "Cài đặt lịch". Không tự đoán selector.
