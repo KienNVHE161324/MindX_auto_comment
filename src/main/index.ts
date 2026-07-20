@@ -8,7 +8,10 @@ import { createStorageProvider } from './storage'
 import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { LmsAutomator } from './automation/LmsAutomator'
+import { AutoSendScheduler, writeZaloMessageToDocuments } from './automation/AutoSendScheduler'
 import { IPC } from '../shared/types'
+
+const AUTO_SEND_INTERVAL_MS = 60_000
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -33,19 +36,38 @@ const lmsAutomator = new LmsAutomator(
   join(app.getPath('userData'), 'lms-browser'),
 )
 
+const configStore = new ConfigStore(app.getPath('userData'))
+const getRepository = async (): Promise<ClassRepository> => {
+  const cfg = await configStore.load()
+  return new ClassRepository(createStorageProvider(cfg))
+}
+const getContentRepository = async (): Promise<ContentRepository> => {
+  const cfg = await configStore.load()
+  return new ContentRepository(createStorageProvider(cfg))
+}
+
+function startAutoSendScheduler(): void {
+  const scheduler = new AutoSendScheduler({
+    getClasses: async () => (await getRepository()).list(),
+    getContent: async (sessionId) => (await getContentRepository()).get(sessionId),
+    saveContent: async (content) => (await getContentRepository()).save(content),
+    getConfig: () => configStore.load(),
+    lmsOpenBrowser: async () => {
+      const cfg = await configStore.load()
+      return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
+    },
+    lmsPostSession: (params) => lmsAutomator.postSession(params),
+    writeZaloMessage: writeZaloMessageToDocuments(app.getPath('documents')),
+    log: (msg) => console.log(msg),
+  })
+  void scheduler.tick()
+  setInterval(() => { void scheduler.tick() }, AUTO_SEND_INTERVAL_MS)
+}
+
 function registerIpc(): void {
-  const configStore = new ConfigStore(app.getPath('userData'))
   const pickFolder = async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
-  }
-  const getRepository = async (): Promise<ClassRepository> => {
-    const cfg = await configStore.load()
-    return new ClassRepository(createStorageProvider(cfg))
-  }
-  const getContentRepository = async (): Promise<ContentRepository> => {
-    const cfg = await configStore.load()
-    return new ContentRepository(createStorageProvider(cfg))
   }
   const requireApiKey = async (): Promise<string> => {
     const cfg = await configStore.load()
@@ -105,6 +127,7 @@ function registerIpc(): void {
 app.whenReady().then(() => {
   registerIpc()
   createWindow()
+  startAutoSendScheduler()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
