@@ -114,6 +114,12 @@ export default function SessionComposer(
         comments,
       })
       setLmsResult(result)
+
+      if (!result.error && result.posted.length > 0) {
+        const posted = { ...content, postedToLms: true }
+        await window.api.saveContent(posted)
+        setContent(posted)
+      }
     } catch (err) {
       setError((err as Error).message)
     } finally {

@@ -101,6 +101,55 @@ describe('ClassesPage', () => {
     await waitFor(() => expect(screen.getByText(/đã cập nhật nội dung 1 buổi/i)).toBeInTheDocument())
   })
 
+  it('hiện đúng trạng thái buổi: chưa có nội dung / đã soạn nội dung / đã nhận xét', async () => {
+    const cls: SchoolClass = {
+      id: 'c3', code: 'C3', name: 'Lớp C3', students: [{ id: 's1', name: 'An' }],
+      sessions: [
+        { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
+        { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
+        { id: 'ss3', dateTime: '2026-01-15T14:00:00' },
+      ],
+    }
+    stub({
+      listClasses: vi.fn(async () => [cls]),
+      getContent: vi.fn(async (sessionId: string) => {
+        if (sessionId === 'ss2') return { id: 'ss2', classId: 'c3', sessionId: 'ss2', lessonContent: 'x', homework: '', comments: [] }
+        if (sessionId === 'ss3') return { id: 'ss3', classId: 'c3', sessionId: 'ss3', lessonContent: 'x', homework: '', comments: [], postedToLms: true }
+        return null
+      }),
+    })
+    render(<ClassesPage />)
+    await waitFor(() => screen.getByText('C3'))
+    expect(screen.getAllByText('chưa có nội dung').length).toBeGreaterThan(0)
+    expect(screen.getByText('đã soạn nội dung')).toBeInTheDocument()
+    expect(screen.getByText('đã nhận xét')).toBeInTheDocument()
+  })
+
+  it('nút "Sao chép buổi trước" chỉ hiện khi buổi chưa có nội dung và buổi trước đã có; bấm sẽ lưu bản sao', async () => {
+    const cls: SchoolClass = {
+      id: 'c3', code: 'C3', name: 'Lớp C3', students: [{ id: 's1', name: 'An' }],
+      sessions: [
+        { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
+        { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
+      ],
+    }
+    const prevContent = { id: 'ss1', classId: 'c3', sessionId: 'ss1', lessonContent: 'Bài trước', homework: 'BT', comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }] }
+    const api = stub({
+      listClasses: vi.fn(async () => [cls]),
+      getContent: vi.fn(async (sessionId: string) => (sessionId === 'ss1' ? prevContent : null)),
+      saveContent: vi.fn(async () => {}),
+    })
+    render(<ClassesPage />)
+    await waitFor(() => screen.getByText('C3'))
+    const copyBtn = await screen.findByLabelText(/sao chép buổi trước c3/i)
+    fireEvent.click(copyBtn)
+    await waitFor(() => expect(api.saveContent).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'ss2', classId: 'c3', lessonContent: 'Bài trước', homework: 'BT',
+      comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }],
+      absentStudentIds: [], postedToLms: false,
+    })))
+  })
+
   it('lớp bị bỏ qua (LMS chưa có nội dung) hiện trong tóm tắt', async () => {
     const clsA1: SchoolClass = {
       id: 'c1', code: 'A1', name: 'Lớp A1',

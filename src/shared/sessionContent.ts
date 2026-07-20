@@ -1,0 +1,38 @@
+import { ClassSession, SessionContent } from './types'
+
+export type SessionContentStatus = 'chưa có nội dung' | 'đã soạn nội dung' | 'đã nhận xét'
+
+export function getSessionContentStatus(content: SessionContent | null | undefined): SessionContentStatus {
+  if (!content) return 'chưa có nội dung'
+  if (content.postedToLms) return 'đã nhận xét'
+  return 'đã soạn nội dung'
+}
+
+/** Tìm buổi học gần nhất trước buổi hiện tại (theo dateTime), không phụ thuộc "now". */
+export function findPreviousSession(
+  sessions: ClassSession[],
+  currentSessionId: string,
+): ClassSession | undefined {
+  const current = sessions.find(s => s.id === currentSessionId)
+  if (!current) return undefined
+
+  const before = sessions
+    .filter(s => s.id !== currentSessionId && new Date(s.dateTime) < new Date(current.dateTime))
+    .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
+
+  return before[0]
+}
+
+/** Sao chép nội dung buổi trước sang buổi đích — không mang theo điểm danh/trạng thái đã gửi. */
+export function copySessionContent(target: ClassSession, classId: string, source: SessionContent): SessionContent {
+  return {
+    id: target.id,
+    classId,
+    sessionId: target.id,
+    lessonContent: source.lessonContent,
+    homework: source.homework,
+    comments: source.comments.map(c => ({ ...c })),
+    absentStudentIds: [],
+    postedToLms: false,
+  }
+}

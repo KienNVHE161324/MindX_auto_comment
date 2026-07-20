@@ -145,6 +145,32 @@ describe('SessionComposer', () => {
     expect(pre.textContent).not.toContain('Bình')
   })
 
+  it('gửi LMS thành công -> lưu content với postedToLms=true', async () => {
+    const api = stub({
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByText(/gửi lên lms/i))
+    fireEvent.click(screen.getByText(/gửi lên lms/i))
+    await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalled())
+    await waitFor(() => expect(api.saveContent).toHaveBeenCalledWith(
+      expect.objectContaining({ postedToLms: true }),
+    ))
+  })
+
+  it('gửi LMS lỗi -> không đánh dấu postedToLms', async () => {
+    const api = stub({
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({ posted: [], skipped: [], error: 'Lỗi kết nối' })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByText(/gửi lên lms/i))
+    fireEvent.click(screen.getByText(/gửi lên lms/i))
+    await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalled())
+    expect(api.saveContent).not.toHaveBeenCalled()
+  })
+
   it('AI sửa thất bại hiển thị lỗi', async () => {
     stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)

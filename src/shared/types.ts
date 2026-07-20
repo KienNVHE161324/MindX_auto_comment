@@ -50,6 +50,8 @@ export interface SessionContent {
   homework: string
   comments: StudentComment[]
   absentStudentIds?: string[]
+  /** true khi đã gửi lên LMS thành công (có HS được nhận xét, không lỗi) */
+  postedToLms?: boolean
 }
 
 export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
