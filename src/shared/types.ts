@@ -105,7 +105,7 @@ export interface LmsPostResult {
 export interface LmsScrapedClass {
   lmsCode: string
   name: string
-  sessions: { date: string }[]     // 'YYYY-MM-DD'
+  sessions: { date: string; time?: string }[]  // date 'YYYY-MM-DD', time 'HH:mm' (giờ bắt đầu, nếu LMS có)
   students: { name: string }[]
 }
 

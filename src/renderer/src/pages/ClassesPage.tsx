@@ -110,10 +110,10 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
       const newStudents = sc.students
         .filter(s => !cls.students.some(e => e.name === s.name))
         .map(s => ({ id: newId(), name: s.name }))
-      // Thêm buổi mới (không xoá buổi cũ)
+      // Thêm buổi mới (không xoá buổi cũ) — dùng giờ thật từ LMS nếu có, mặc định 14:00
       const newSessions = sc.sessions
         .filter(s => !cls.sessions.some(e => e.dateTime.startsWith(s.date)))
-        .map(s => ({ id: newId(), dateTime: `${s.date}T14:00:00` }))
+        .map(s => ({ id: newId(), dateTime: `${s.date}T${s.time ?? '14:00'}:00` }))
       await window.api.saveClass({
         ...cls,
         students: [...cls.students, ...newStudents],

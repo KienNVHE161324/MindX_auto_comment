@@ -569,20 +569,37 @@ export class LmsAutomator {
 
   // ─── Sync helpers ──────────────────────────────────────────────────────────
 
-  private async scrapeSessions(page: Page): Promise<{ date: string }[]> {
+  private async scrapeSessions(page: Page): Promise<{ date: string; time?: string }[]> {
     try {
-      // Buổi học nằm ở trang mặc định dưới dạng <input placeholder="DD/MM/YYYY">
-      // Không cần click tab — đọc thẳng value từ DOM (kể cả khi accordion bị collapse)
+      // Mỗi buổi là 1 hàng: <input placeholder="DD/MM/YYYY"> + 2 <input placeholder="hh:mm"> (giờ bắt đầu / kết thúc).
+      // Đọc trực tiếp trong DOM: từ ô ngày leo lên tổ tiên gần nhất chứa cả ô "hh:mm" → ô hh:mm đầu tiên = giờ bắt đầu.
       await page.waitForSelector('input[placeholder="DD/MM/YYYY"]', { timeout: 8_000 })
-      const inputs = page.locator('input[placeholder="DD/MM/YYYY"]')
-      const count = await inputs.count()
-      console.log(`[LMS] Tìm thấy ${count} date inputs`)
-      const sessions: { date: string }[] = []
-      for (let i = 0; i < count; i++) {
-        const val = await inputs.nth(i).inputValue()
-        // Format DD/MM/YYYY → YYYY-MM-DD
-        const m = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-        if (m) sessions.push({ date: `${m[3]}-${m[2]}-${m[1]}` })
+      const raw = await page.evaluate(() => {
+        const dateInputs = Array.from(
+          document.querySelectorAll('input[placeholder="DD/MM/YYYY"]'),
+        ) as HTMLInputElement[]
+        return dateInputs.map(dateEl => {
+          let node: HTMLElement | null = dateEl.parentElement
+          let timeEl: HTMLInputElement | null = null
+          while (node) {
+            timeEl = node.querySelector('input[placeholder="hh:mm"]')
+            if (timeEl) break
+            node = node.parentElement
+          }
+          return { date: dateEl.value, time: timeEl?.value ?? '' }
+        })
+      })
+      console.log(`[LMS] Tìm thấy ${raw.length} buổi (date+time)`)
+
+      const sessions: { date: string; time?: string }[] = []
+      for (const r of raw) {
+        // Ngày DD/MM/YYYY → YYYY-MM-DD
+        const dm = r.date.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+        if (!dm) continue
+        // Giờ HH:mm (nếu có)
+        const tm = r.time.match(/^(\d{1,2}):(\d{2})$/)
+        const time = tm ? `${tm[1].padStart(2, '0')}:${tm[2]}` : undefined
+        sessions.push({ date: `${dm[3]}-${dm[2]}-${dm[1]}`, time })
       }
       return sessions
     } catch (err) {
