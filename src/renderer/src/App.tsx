@@ -5,10 +5,11 @@ import ClassesPage from './pages/ClassesPage'
 export default function App(): JSX.Element {
   const [tab, setTab] = useState<'classes' | 'settings'>('classes')
   return (
-    <div style={{ fontFamily: 'system-ui' }}>
-      <nav style={{ display: 'flex', gap: 8, padding: 12, borderBottom: '1px solid #ddd' }}>
-        <button onClick={() => setTab('classes')} disabled={tab === 'classes'}>Lớp học</button>
-        <button onClick={() => setTab('settings')} disabled={tab === 'settings'}>Cấu hình</button>
+    <div>
+      <nav className="app-nav">
+        <span className="app-brand"><span className="dot" />MindX Auto Comment</span>
+        <button className={`tab${tab === 'classes' ? ' active' : ''}`} onClick={() => setTab('classes')}>Lớp học</button>
+        <button className={`tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Cấu hình</button>
       </nav>
       {/* Giữ cả 2 tab luôn mounted (chỉ ẩn/hiện) để không mất dữ liệu đang nhập khi chuyển tab. */}
       <div style={{ display: tab === 'classes' ? 'block' : 'none' }}>

@@ -7,6 +7,7 @@ import { computeContentTargets, mergeContentResult } from '../../../shared/lmsSy
 import { getSessionContentStatus, findPreviousSession, copySessionContent, SessionContentStatus } from '../../../shared/sessionContent'
 import ClassEditor from './ClassEditor'
 import SessionComposer from './SessionComposer'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
@@ -19,7 +20,7 @@ const STATUS_STYLE: Record<ClassStatus, { background: string; color: string }> =
 }
 
 const CONTENT_STATUS_STYLE: Record<SessionContentStatus, { background: string; color: string }> = {
-  'chưa có nội dung': { background: '#f5f5f5', color: '#757575' },
+  'chưa có nội dung': { background: '#f2f4f7', color: '#667085' },
   'đã soạn nội dung': { background: '#fff3e0', color: '#e65100' },
   'đã nhận xét':      { background: '#e8f5e9', color: '#2e7d32' },
 }
@@ -34,6 +35,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sessionContents, setSessionContents] = useState<Map<string, SessionContent>>(new Map())
   const [syncSummary, setSyncSummary] = useState<{ updated: number; skipped: number } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<SchoolClass | null>(null)
 
   const reload = async (): Promise<void> => {
     try {
@@ -121,7 +123,10 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     await reload()
   }
 
-  const remove = async (id: string): Promise<void> => {
+  const confirmRemove = async (): Promise<void> => {
+    if (!pendingDelete) return
+    const id = pendingDelete.id
+    setPendingDelete(null)
     try {
       await window.api.deleteClass(id)
       await reload()
@@ -151,120 +156,134 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 720, fontFamily: 'system-ui' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="page">
+      <div className="row-between" style={{ marginBottom: 20 }}>
         <h1>Lớp học</h1>
-        <div>
-          <button onClick={() => void reload()}>Tải lại</button>{' '}
-          <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>{' '}
-          <button onClick={() => void syncFromLms()} disabled={syncing}>
+        <div className="btn-row">
+          <button className="btn" onClick={() => void reload()}>Tải lại</button>
+          <button className="btn" onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
+          <button className="btn btn-primary" onClick={() => void syncFromLms()} disabled={syncing}>
             {syncing ? 'Đang đồng bộ...' : 'Đồng bộ từ LMS'}
           </button>
         </div>
       </div>
 
       {error && (
-        <p style={{ color: 'crimson' }}>
+        <p className="alert alert-error">
           Không tải được danh sách lớp: {error}. Hãy chọn thư mục lưu dữ liệu trong tab Cấu hình.
         </p>
       )}
-      {syncError && <p style={{ color: 'crimson' }}>Lỗi kết nối LMS: {syncError}</p>}
+      {syncError && <p className="alert alert-error">Lỗi kết nối LMS: {syncError}</p>}
 
       {syncSummary && (
-        <p style={{ color: '#555' }}>
+        <p className="alert alert-info">
           Đã cập nhật nội dung {syncSummary.updated} buổi
           {syncSummary.skipped > 0 ? `, bỏ qua ${syncSummary.skipped} lớp (LMS chưa có nội dung buổi mới nhất)` : ''}.
         </p>
       )}
 
       {syncPreview && (
-        <div style={{ border: '1px solid #aaa', borderRadius: 8, padding: 12, marginBottom: 16, background: '#f9f9f9' }}>
+        <div className="section">
           <strong>Tìm thấy {syncPreview.length} lớp từ LMS:</strong>
-          <ul style={{ margin: '8px 0 12px', paddingLeft: 20, fontSize: 13 }}>
+          <ul style={{ margin: '10px 0 14px', paddingLeft: 20, fontSize: 13 }}>
             {syncPreview.map(sc => (
-              <li key={sc.lmsCode}>
+              <li key={sc.lmsCode} style={{ marginBottom: 4 }}>
                 <strong>{sc.lmsCode}</strong> — {sc.name}
-                {' '}({sc.students.length} HS, {sc.sessions.length} buổi)
+                {' '}<span className="text-muted">({sc.students.length} HS, {sc.sessions.length} buổi)</span>
               </li>
             ))}
           </ul>
-          <button onClick={() => void importScraped(syncPreview)}>Nhập tất cả vào app</button>{' '}
-          <button onClick={() => setSyncPreview(null)}>Hủy</button>
+          <div className="btn-row">
+            <button className="btn btn-primary" onClick={() => void importScraped(syncPreview)}>Nhập tất cả vào app</button>
+            <button className="btn" onClick={() => setSyncPreview(null)}>Hủy</button>
+          </div>
         </div>
       )}
 
-      {!error && classes.length === 0 && !syncPreview && <p>Chưa có lớp nào.</p>}
+      {!error && classes.length === 0 && !syncPreview && (
+        <div className="card card-pad text-muted">Chưa có lớp nào.</div>
+      )}
 
-      <ul style={{ listStyle: 'none', padding: 0 }}>
+      <div className="stack">
         {classes.map(c => (
-          <li key={c.id} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div key={c.id} className="card card-pad">
+            <div className="row-between">
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <strong>{c.code}</strong> — {c.name}
+                  <strong style={{ fontSize: 15 }}>{c.code}</strong>
+                  <span className="text-muted">{c.name}</span>
                   {(() => {
                     const status = getClassStatus(c.sessions)
                     const s = STATUS_STYLE[status]
                     return (
-                      <span style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                        background: s.background, color: s.color, fontWeight: 600,
-                      }}>
+                      <span className="badge" style={{ background: s.background, color: s.color }}>
                         {status}
                       </span>
                     )
                   })()}
                 </div>
-                <div style={{ color: '#666', fontSize: 13 }}>
+                <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
                   {c.students.length} học sinh · {c.sessions.length} buổi
+                  {c.autoSend?.enabled && <> · <span className="text-success">⏰ tự động {c.autoSend.time}</span></>}
                 </div>
               </div>
-              <div>
-                <button onClick={() => setEditing(c)}>Sửa</button>{' '}
-                <button aria-label={`Xóa lớp ${c.code}`} onClick={() => remove(c.id)}>Xóa</button>
+              <div className="btn-row">
+                <button className="btn btn-sm" onClick={() => setEditing(c)}>Sửa</button>
+                <button className="btn btn-icon" aria-label={`Xóa lớp ${c.code}`} onClick={() => setPendingDelete(c)}>🗑</button>
               </div>
             </div>
             {c.sessions.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 13, color: '#666' }}>Soạn nội dung theo buổi:</div>
-                {c.sessions.map(ss => {
-                  const content = sessionContents.get(ss.id) ?? null
-                  const status = getSessionContentStatus(content)
-                  const cs = CONTENT_STATUS_STYLE[status]
-                  const prev = findPreviousSession(c.sessions, ss.id)
-                  const prevContent = prev ? sessionContents.get(prev.id) : undefined
-                  const canCopy = status === 'chưa có nội dung' && !!prevContent
-                  return (
-                    <div key={ss.id} style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
-                      <span style={{
-                        fontSize: 11, padding: '2px 8px', borderRadius: 10,
-                        background: cs.background, color: cs.color, fontWeight: 600,
-                      }}>
-                        {status}
-                      </span>
-                      <button
-                        aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
-                        onClick={() => setComposing({ cls: c, session: ss })}
-                      >
-                        {status === 'chưa có nội dung' ? 'Soạn nội dung' : 'Xem/Sửa nội dung'}
-                      </button>
-                      {canCopy && (
+              <>
+                <hr className="divider" />
+                <div className="text-muted" style={{ fontSize: 12, marginBottom: 8, fontWeight: 550 }}>Nội dung theo buổi</div>
+                <div className="stack" style={{ gap: 6 }}>
+                  {c.sessions.map(ss => {
+                    const content = sessionContents.get(ss.id) ?? null
+                    const status = getSessionContentStatus(content)
+                    const cs = CONTENT_STATUS_STYLE[status]
+                    const prev = findPreviousSession(c.sessions, ss.id)
+                    const prevContent = prev ? sessionContents.get(prev.id) : undefined
+                    const canCopy = status === 'chưa có nội dung' && !!prevContent
+                    return (
+                      <div key={ss.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 13, minWidth: 132 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
+                        <span className="badge" style={{ background: cs.background, color: cs.color }}>{status}</span>
                         <button
-                          aria-label={`Sao chép buổi trước ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
-                          onClick={() => void copyFromPrevious(c, ss)}
+                          className="btn btn-sm"
+                          aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
+                          onClick={() => setComposing({ cls: c, session: ss })}
                         >
-                          Sao chép buổi trước
+                          {status === 'chưa có nội dung' ? 'Soạn nội dung' : 'Xem/Sửa nội dung'}
                         </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                        {canCopy && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            aria-label={`Sao chép buổi trước ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
+                            onClick={() => void copyFromPrevious(c, ss)}
+                          >
+                            Sao chép buổi trước
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
             )}
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Xóa lớp học"
+          message={`Xóa lớp "${pendingDelete.code} — ${pendingDelete.name}"? Toàn bộ học sinh và buổi học của lớp sẽ bị xóa. Hành động này không thể hoàn tác.`}
+          confirmLabel="Xóa lớp"
+          danger
+          onConfirm={() => void confirmRemove()}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   )
 }

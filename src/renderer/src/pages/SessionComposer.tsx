@@ -154,107 +154,131 @@ export default function SessionComposer(
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 760, fontFamily: 'system-ui' }}>
-      <button onClick={onDone}>← Quay lại</button>
-      <h2>Soạn nội dung — {cls.code} · {formatSessionDate(session.dateTime) || 'buổi học'}</h2>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+    <div className="page">
+      <button className="btn btn-ghost btn-sm" onClick={onDone} style={{ marginBottom: 12 }}>← Quay lại</button>
+      <h1 style={{ marginBottom: 4 }}>Soạn nội dung</h1>
+      <div className="text-muted" style={{ marginBottom: 20 }}>
+        {cls.code} · {formatSessionDate(session.dateTime) || 'buổi học'}
+      </div>
+      {error && <p className="alert alert-error">{error}</p>}
 
-      <section style={{ marginBottom: 20 }}>
-        <label htmlFor="lesson">Nội dung bài học</label><br />
-        <textarea
-          id="lesson"
-          rows={6}
-          style={{ width: '100%' }}
-          value={content.lessonContent}
-          onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
-        />
-        <div><button onClick={loadPdf}>Nạp PDF &amp; trích</button></div>
+      <section className="section">
+        <h3>Nội dung bài học</h3>
+        <div className="field" style={{ marginBottom: 10 }}>
+          <label htmlFor="lesson" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Nội dung bài học</label>
+          <textarea
+            id="lesson"
+            className="textarea"
+            rows={6}
+            value={content.lessonContent}
+            onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
+          />
+        </div>
+        <button className="btn btn-sm" onClick={loadPdf}>Nạp PDF &amp; trích</button>
       </section>
 
-      <section style={{ marginBottom: 20 }}>
+      <section className="section">
         <h3>Nhận xét học sinh</h3>
-        {cls.students.length === 0 && <p>Lớp chưa có học sinh.</p>}
-        {cls.students.map(s => {
-          const cm = commentFor(s.id)
-          const isRewriting = rewritingIds.has(s.id)
-          return (
-            <div key={s.id} style={{ borderBottom: '1px solid #eee', paddingBottom: 8, marginBottom: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong>{s.name}</strong>
-                {cm.polished && <span style={{ fontSize: 12, color: '#888' }}>(AI đã sửa)</span>}
-              </div>
-              <textarea
-                aria-label={`Nhận xét ${s.name}`}
-                rows={2}
-                style={{ width: '100%', marginTop: 4 }}
-                value={cm.polished || cm.raw}
-                onChange={e => {
-                  if (cm.polished) {
-                    setComment(s.id, { polished: e.target.value })
-                  } else {
-                    setComment(s.id, { raw: e.target.value })
-                  }
-                }}
-              />
-              <div style={{ marginTop: 4, display: 'flex', gap: 8 }}>
-                <button
-                  aria-label={`AI sửa ${s.name}`}
-                  disabled={isRewriting}
-                  onClick={() => aiRewrite(s.id, s.name)}
-                >
-                  {isRewriting ? 'Đang sửa...' : 'Sửa bằng AI'}
-                </button>
-                {cm.polished && (
+        {cls.students.length === 0 && <p className="text-muted">Lớp chưa có học sinh.</p>}
+        <div className="stack" style={{ gap: 14 }}>
+          {cls.students.map(s => {
+            const cm = commentFor(s.id)
+            const isRewriting = rewritingIds.has(s.id)
+            const absent = isAbsent(s.id)
+            return (
+              <div key={s.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <strong>
+                    {s.name}
+                    {absent && <span className="badge" style={{ background: '#f2f4f7', color: '#667085', marginLeft: 8 }}>nghỉ</span>}
+                  </strong>
+                  {cm.polished && <span className="text-muted" style={{ fontSize: 12 }}>(AI đã sửa)</span>}
+                </div>
+                <textarea
+                  className="textarea"
+                  aria-label={`Nhận xét ${s.name}`}
+                  rows={2}
+                  value={cm.polished || cm.raw}
+                  onChange={e => {
+                    if (cm.polished) {
+                      setComment(s.id, { polished: e.target.value })
+                    } else {
+                      setComment(s.id, { raw: e.target.value })
+                    }
+                  }}
+                />
+                <div className="btn-row" style={{ marginTop: 6 }}>
                   <button
-                    aria-label={`Hoàn tác ${s.name}`}
-                    onClick={() => setComment(s.id, { polished: '' })}
+                    className="btn btn-sm"
+                    aria-label={`AI sửa ${s.name}`}
+                    disabled={isRewriting}
+                    onClick={() => aiRewrite(s.id, s.name)}
                   >
-                    Hoàn tác
+                    {isRewriting ? 'Đang sửa...' : 'Sửa bằng AI'}
                   </button>
-                )}
+                  {cm.polished && (
+                    <button
+                      className="btn btn-sm btn-ghost"
+                      aria-label={`Hoàn tác ${s.name}`}
+                      onClick={() => setComment(s.id, { polished: '' })}
+                    >
+                      Hoàn tác
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </section>
 
-      <section style={{ marginBottom: 20 }}>
-        <label htmlFor="homework">Bài tập về nhà</label><br />
-        <textarea
-          id="homework"
-          rows={3}
-          style={{ width: '100%' }}
-          value={content.homework}
-          onChange={e => mutate(prev => ({ ...prev, homework: e.target.value }))}
-        />
+      <section className="section">
+        <h3>Bài tập về nhà</h3>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="homework" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Bài tập về nhà</label>
+          <textarea
+            id="homework"
+            className="textarea"
+            rows={3}
+            value={content.homework}
+            onChange={e => mutate(prev => ({ ...prev, homework: e.target.value }))}
+          />
+        </div>
       </section>
 
-      <button onClick={showPreview}>Xem trước</button>{' '}
-      <button onClick={save}>Lưu</button>
-      {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
-
-      <div style={{ marginTop: 12 }}>
-        <button onClick={postToLms} disabled={lmsPosting}>
+      <div className="btn-row" style={{ marginBottom: 16 }}>
+        <button className="btn" onClick={showPreview}>Xem trước</button>
+        <button className="btn btn-primary" onClick={save}>Lưu</button>
+        {saved && <span className="text-success">Đã lưu ✓</span>}
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-primary" onClick={postToLms} disabled={lmsPosting}>
           {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
-        {lmsResult && (
-          <div style={{ marginTop: 8, fontSize: 13 }}>
-            {lmsResult.error && <p style={{ color: 'crimson' }}>{lmsResult.error}</p>}
-            {lmsResult.posted.length > 0 && (
-              <p style={{ color: 'green' }}>Đã nhận xét: {lmsResult.posted.join(', ')}</p>
-            )}
-            {lmsResult.skipped.length > 0 && (
-              <p style={{ color: '#888' }}>Bỏ qua (nghỉ/thiếu nội dung): {lmsResult.skipped.join(', ')}</p>
-            )}
-          </div>
-        )}
       </div>
 
+      {lmsResult && (
+        <div className="card card-pad" style={{ fontSize: 13, marginBottom: 16 }}>
+          {lmsResult.error && <p className="text-danger" style={{ margin: 0 }}>{lmsResult.error}</p>}
+          {lmsResult.posted.length > 0 && (
+            <p className="text-success" style={{ margin: 0 }}>Đã nhận xét: {lmsResult.posted.join(', ')}</p>
+          )}
+          {lmsResult.skipped.length > 0 && (
+            <p className="text-muted" style={{ margin: '4px 0 0' }}>Bỏ qua (nghỉ/thiếu nội dung): {lmsResult.skipped.join(', ')}</p>
+          )}
+        </div>
+      )}
+
       {preview !== null && (
-        <section style={{ marginTop: 20 }}>
-          <h3>Xem trước tin nhắn Zalo</h3>
-          <button onClick={() => void navigator.clipboard.writeText(preview)}>Copy tin nhắn</button>
-          <pre aria-label="Xem trước Zalo" style={{ whiteSpace: 'pre-wrap', background: '#f6f6f6', padding: 12 }}>
+        <section className="section">
+          <div className="row-between" style={{ marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>Xem trước tin nhắn Zalo</h3>
+            <button className="btn btn-sm" onClick={() => void navigator.clipboard.writeText(preview)}>Copy tin nhắn</button>
+          </div>
+          <pre
+            aria-label="Xem trước Zalo"
+            className="mono"
+            style={{ whiteSpace: 'pre-wrap', background: 'var(--bg)', padding: 14, borderRadius: 'var(--radius-sm)', margin: 0 }}
+          >
             {preview}
           </pre>
         </section>

@@ -55,84 +55,97 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 720 }}>
-      <button onClick={onDone}>← Quay lại</button>
-      <h2>Soạn lớp</h2>
+    <div className="page">
+      <button className="btn btn-ghost btn-sm" onClick={onDone} style={{ marginBottom: 12 }}>← Quay lại</button>
+      <h1 style={{ marginBottom: 20 }}>Soạn lớp</h1>
 
-      <div style={{ marginBottom: 12 }}>
-        <label htmlFor="cls-code">Mã lớp</label><br />
-        <input id="cls-code" value={draft.code} onChange={e => setCode(e.target.value)} />
-      </div>
-      <div style={{ marginBottom: 20 }}>
-        <label htmlFor="cls-name">Tên lớp</label><br />
-        <input id="cls-name" value={draft.name} onChange={e => setName(e.target.value)} style={{ width: 360 }} />
-      </div>
-
-      <h3>Học sinh</h3>
-      {draft.students.map(s => (
-        <div key={s.id} style={{ marginBottom: 6 }}>
-          <input
-            placeholder="Tên học sinh"
-            value={s.name}
-            onChange={e => setStudent(s.id, e.target.value)}
-          />{' '}
-          <button aria-label={`Xóa học sinh ${s.name}`} onClick={() => removeStudent(s.id)}>×</button>
+      <div className="section">
+        <div className="field">
+          <label htmlFor="cls-code">Mã lớp</label>
+          <input id="cls-code" className="input input-auto" style={{ minWidth: 220 }} value={draft.code} onChange={e => setCode(e.target.value)} />
         </div>
-      ))}
-      <button onClick={addStudent}>+ Thêm học sinh</button>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="cls-name">Tên lớp</label>
+          <input id="cls-name" className="input" style={{ maxWidth: 420 }} value={draft.name} onChange={e => setName(e.target.value)} />
+        </div>
+      </div>
 
-      <h3 style={{ marginTop: 20 }}>Buổi học</h3>
-      {draft.sessions.map(s => {
-        const { date, hour } = splitDateTime(s.dateTime)
-        return (
-          <div key={s.id} style={{ marginBottom: 6 }}>
-            <input
-              type="date"
-              aria-label="Ngày buổi"
-              value={date}
-              onChange={e => setSession(s.id, combineDateTime(e.target.value, hour))}
-            />{' '}
-            <select
-              aria-label="Giờ buổi"
-              value={hour}
-              onChange={e => selectHour(s.id, e.target.value, date)}
-            >
-              <option value="">-- giờ --</option>
-              {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).map(h => (
-                <option key={h} value={h}>{h}h</option>
-              ))}
-            </select>{' '}
-            <button aria-label={`Xóa buổi ${s.dateTime || s.id}`} onClick={() => removeSession(s.id)}>×</button>
-          </div>
-        )
-      })}
-      <button onClick={addSession}>+ Thêm buổi</button>
+      <div className="section">
+        <h3>Học sinh</h3>
+        <div className="stack" style={{ gap: 6, marginBottom: 12 }}>
+          {draft.students.map(s => (
+            <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                className="input"
+                style={{ maxWidth: 320 }}
+                placeholder="Tên học sinh"
+                value={s.name}
+                onChange={e => setStudent(s.id, e.target.value)}
+              />
+              <button className="btn btn-icon" aria-label={`Xóa học sinh ${s.name}`} onClick={() => removeStudent(s.id)}>✕</button>
+            </div>
+          ))}
+        </div>
+        <button className="btn btn-sm" onClick={addStudent}>+ Thêm học sinh</button>
+      </div>
 
-      <h3 style={{ marginTop: 20 }}>Gửi tự động</h3>
-      <div style={{ marginBottom: 20 }}>
-        <label>
+      <div className="section">
+        <h3>Buổi học</h3>
+        <div className="stack" style={{ gap: 6, marginBottom: 12 }}>
+          {draft.sessions.map(s => {
+            const { date, hour } = splitDateTime(s.dateTime)
+            return (
+              <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  className="input input-auto"
+                  aria-label="Ngày buổi"
+                  value={date}
+                  onChange={e => setSession(s.id, combineDateTime(e.target.value, hour))}
+                />
+                <select
+                  className="input input-auto"
+                  aria-label="Giờ buổi"
+                  value={hour}
+                  onChange={e => selectHour(s.id, e.target.value, date)}
+                >
+                  <option value="">-- giờ --</option>
+                  {Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')).map(h => (
+                    <option key={h} value={h}>{h}h</option>
+                  ))}
+                </select>
+                <button className="btn btn-icon" aria-label={`Xóa buổi ${s.dateTime || s.id}`} onClick={() => removeSession(s.id)}>✕</button>
+              </div>
+            )
+          })}
+        </div>
+        <button className="btn btn-sm" onClick={addSession}>+ Thêm buổi</button>
+      </div>
+
+      <div className="section">
+        <h3>Gửi tự động</h3>
+        <label className="check">
           <input
             type="checkbox"
             checked={autoSend.enabled}
             onChange={e => setAutoSendEnabled(e.target.checked)}
-          />{' '}
+          />
           Tự động gửi LMS/Zalo hằng ngày lúc
-        </label>{' '}
-        <input
-          type="time"
-          aria-label="Giờ gửi tự động"
-          value={autoSend.time}
-          disabled={!autoSend.enabled}
-          onChange={e => setAutoSendTime(e.target.value)}
-        />
-        <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
-          Chỉ gửi nội dung của buổi học gần nhất đã qua và đã được soạn.
-        </div>
+          <input
+            type="time"
+            className="input input-auto"
+            aria-label="Giờ gửi tự động"
+            value={autoSend.time}
+            disabled={!autoSend.enabled}
+            onChange={e => setAutoSendTime(e.target.value)}
+          />
+        </label>
+        <p className="field-hint">Chỉ gửi nội dung của buổi học gần nhất đã qua và đã được soạn.</p>
       </div>
 
-      <div style={{ marginTop: 24 }}>
-        <button onClick={save}>Lưu</button>
-        {error && <span style={{ marginLeft: 12, color: 'crimson' }}>Lưu thất bại: {error}</span>}
+      <div className="btn-row">
+        <button className="btn btn-primary" onClick={save}>Lưu</button>
+        {error && <span className="text-danger">Lưu thất bại: {error}</span>}
       </div>
     </div>
   )

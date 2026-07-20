@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import ClassesPage from './ClassesPage'
 import { SchoolClass } from '../../../shared/types'
 
@@ -40,13 +40,28 @@ describe('ClassesPage', () => {
     fireEvent.click(screen.getByText(/^\+ Thêm lớp$/i))
     await waitFor(() => expect(screen.getByLabelText(/mã lớp/i)).toBeInTheDocument())
   })
-  it('bấm "Xóa" gọi deleteClass rồi tải lại', async () => {
+  it('bấm "Xóa" mở hộp xác nhận; xác nhận gọi deleteClass rồi tải lại', async () => {
     const api = stub({ listClasses: vi.fn(async () => [c1]) })
     render(<ClassesPage />)
     await waitFor(() => screen.getByText('A1'))
     fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
+    // Chưa xóa cho tới khi xác nhận trong hộp thoại
+    const dialog = await screen.findByRole('dialog')
+    expect(api.deleteClass).not.toHaveBeenCalled()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Xóa lớp' }))
     await waitFor(() => expect(api.deleteClass).toHaveBeenCalledWith('c1'))
     expect(api.listClasses).toHaveBeenCalledTimes(2)
+  })
+
+  it('bấm "Xóa" rồi "Hủy" không gọi deleteClass', async () => {
+    const api = stub({ listClasses: vi.fn(async () => [c1]) })
+    render(<ClassesPage />)
+    await waitFor(() => screen.getByText('A1'))
+    fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /hủy/i }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.deleteClass).not.toHaveBeenCalled()
   })
   it('lớp có buổi hiện nút "Soạn nội dung", bấm mở trình soạn', async () => {
     stub({ listClasses: vi.fn(async () => [cWithSession]), getContent: vi.fn(async () => null), getConfig: vi.fn(async () => (await import('../../../shared/types')).DEFAULT_CONFIG) })
