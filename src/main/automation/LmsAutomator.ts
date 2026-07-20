@@ -2,7 +2,10 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright'
 import * as http from 'http'
 import * as fs from 'fs'
 import * as path from 'path'
-import { LmsPostParams, LmsPostResult, LmsSyncResult, LmsScrapedClass } from '../../shared/types'
+import {
+  LmsPostParams, LmsPostResult, LmsSyncResult, LmsScrapedClass,
+  LmsContentTarget, LmsContentResult, LmsSyncAllResult,
+} from '../../shared/types'
 
 const BASE_URL = 'https://lms.mindx.edu.vn'
 const TIMEOUT = 30_000
@@ -162,6 +165,43 @@ export class LmsAutomator {
     const classes = await this.scrapeAllClasses(page, existingCodes)
     console.log('[LMS] syncClasses xong, trả về', classes.length, 'lớp')
     return { classes }
+  }
+
+  /**
+   * Đồng bộ toàn diện: thêm lớp mới + lấy nội dung buổi gần nhất còn thiếu của lớp đang có.
+   */
+  async syncAll(
+    existingCodes: string[],
+    contentTargets: LmsContentTarget[],
+  ): Promise<LmsSyncAllResult> {
+    console.log('[LMS] syncAll() bắt đầu,', contentTargets.length, 'content targets')
+    if (!this.cdpBrowser && !this.context) {
+      throw new Error('Trình duyệt LMS chưa mở.')
+    }
+    const page = await this.getPage()
+    await this.ensureLoggedIn(page)
+
+    const newClasses = await this.scrapeAllClasses(page, existingCodes)
+
+    const contentResults: LmsContentResult[] = []
+    const skippedClasses: string[] = []
+    for (const target of contentTargets) {
+      try {
+        const result = await this.fetchContentForTarget(page, target)
+        if (result) {
+          contentResults.push(result)
+        } else {
+          console.log(`[LMS] ${target.classCode}: buổi ${target.sessionDate} chưa có nội dung trên LMS`)
+          skippedClasses.push(target.classCode)
+        }
+      } catch (err) {
+        console.error(`[LMS] Lỗi lấy nội dung ${target.classCode}:`, (err as Error).message)
+        skippedClasses.push(target.classCode)
+      }
+    }
+
+    console.log(`[LMS] syncAll xong: ${newClasses.length} lớp mới, ${contentResults.length} buổi cập nhật, ${skippedClasses.length} bỏ qua`)
+    return { newClasses, contentResults, skippedClasses }
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -580,5 +620,118 @@ export class LmsAutomator {
       console.warn('[LMS] scrapeStudents lỗi:', (err as Error).message)
       return []
     }
+  }
+
+  // ─── Content sync (tab "Nhận xét") ─────────────────────────────────────────
+
+  private async fetchContentForTarget(
+    page: Page,
+    target: LmsContentTarget,
+  ): Promise<LmsContentResult | null> {
+    await this.findAndOpenClass(page, target.classCode)
+    await this.clickTab(page, 'Nhận xét')
+
+    const found = await this.selectCommentSession(page, target.sessionDate)
+    if (!found) {
+      console.warn(`[LMS] ${target.classCode}: không tìm thấy buổi ${target.sessionDate} trong carousel`)
+      return null
+    }
+
+    const lessonContent = await this.readExpandableSection(page, /tổng\s*k/i)
+    if (!lessonContent) return null  // chưa điền Tổng kết -> buổi chưa có nội dung
+
+    const homework = (await this.readExpandableSection(page, /bài.*nhà/i)) ?? ''
+    const students = await this.readStudentComments(page)
+
+    return { classCode: target.classCode, sessionDate: target.sessionDate, lessonContent, homework, students }
+  }
+
+  /** Chọn buổi trong carousel tab "Nhận xét" theo ngày 'YYYY-MM-DD'. Trả về false nếu không tìm thấy. */
+  private async selectCommentSession(page: Page, sessionDate: string): Promise<boolean> {
+    const [, month, day] = sessionDate.split('-')
+    const slot = page
+      .locator('[id^="class-comments-slot-carousel-"]')
+      .filter({ hasText: new RegExp(`\\b${day}[/-]${month}\\b`) })
+      .first()
+
+    if ((await slot.count()) === 0) return false
+
+    const isDisabled = await slot.evaluate(el => el.className.includes('disabled'))
+    if (isDisabled) return false
+
+    await slot.locator('.info-container').click({ timeout: TIMEOUT })
+    await page.waitForTimeout(500)
+    return true
+  }
+
+  /**
+   * Đọc khối "Tổng kết"/"Bài về nhà": header (icon thu/mở + label) + nội dung liền dưới.
+   * Trả về null nếu không tìm thấy khối; '' nếu khối có nhưng đang trống (placeholder).
+   */
+  private async readExpandableSection(page: Page, headerRegex: RegExp): Promise<string | null> {
+    const block = page.locator('div.jss2713.jss2705').filter({ hasText: headerRegex }).first()
+    if ((await block.count()) === 0) return null
+
+    const isCollapsed = (await block.locator('svg[data-testid="ExpandMoreIcon"]').count()) > 0
+    if (isCollapsed) {
+      await block.locator('div.jss2712').first().click({ timeout: TIMEOUT })
+      await page.waitForTimeout(500)
+    }
+
+    const contentEl = block.locator('div.jss2722').first()
+    if ((await contentEl.count()) === 0) return ''
+
+    const isPlaceholder = await contentEl.evaluate(el => el.className.includes('place-holder'))
+    if (isPlaceholder) return ''
+
+    return ((await contentEl.textContent()) ?? '').trim()
+  }
+
+  /** Đọc điểm danh + nhận xét đã lưu của từng học sinh trong tab "Nhận xét". */
+  private async readStudentComments(
+    page: Page,
+  ): Promise<{ name: string; attended: boolean; comment: string }[]> {
+    const rows = page.locator('div.comment-list-table table tbody tr')
+    const count = await rows.count()
+    const result: { name: string; attended: boolean; comment: string }[] = []
+
+    for (let i = 0; i < count; i++) {
+      const row = rows.nth(i)
+      const name = ((await row.locator('.name-display').first().textContent()) ?? '').trim()
+      if (!name) continue
+
+      const isAbsent =
+        (await row.locator('td').nth(1).locator('*').filter({ hasText: /không thể viết nhận xét/i }).count()) > 0
+
+      if (isAbsent) {
+        result.push({ name, attended: false, comment: '' })
+        continue
+      }
+
+      try {
+        await row.locator('button').filter({ hasText: /nhận xét học sinh/i }).first().click({ timeout: TIMEOUT })
+
+        const popup = page.locator('[role="dialog"]').last()
+        await popup.waitFor({ state: 'visible', timeout: 8_000 })
+
+        const contentEl = popup.locator('div.jss2722').first()
+        let comment = ''
+        if ((await contentEl.count()) > 0) {
+          const isPlaceholder = await contentEl.evaluate(el => el.className.includes('place-holder'))
+          if (!isPlaceholder) comment = ((await contentEl.textContent()) ?? '').trim()
+        }
+
+        await page.keyboard.press('Escape')
+        await popup.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
+        await page.waitForTimeout(300)
+
+        result.push({ name, attended: true, comment })
+      } catch (err) {
+        console.warn(`[LMS] Đọc nhận xét ${name} lỗi:`, (err as Error).message)
+        result.push({ name, attended: true, comment: '' })
+      }
+    }
+
+    return result
   }
 }
