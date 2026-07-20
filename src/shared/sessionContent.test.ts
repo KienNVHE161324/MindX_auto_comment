@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getSessionContentStatus, findPreviousSession, copySessionContent } from './sessionContent'
+import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress } from './sessionContent'
 import { ClassSession, SessionContent } from './types'
 
 describe('getSessionContentStatus', () => {
@@ -41,6 +41,25 @@ describe('findPreviousSession', () => {
 
   it('sessionId không tồn tại -> undefined', () => {
     expect(findPreviousSession(sessions, 'ss-x')).toBeUndefined()
+  })
+})
+
+describe('getClassProgress', () => {
+  const now = new Date('2026-07-17T00:00:00')
+  const sessions: ClassSession[] = [
+    { id: 'ss1', dateTime: '2026-07-01T14:00:00' },
+    { id: 'ss2', dateTime: '2026-07-10T14:00:00' },
+    { id: 'ss3', dateTime: '2026-08-01T14:00:00' },
+  ]
+  const posted = (id: string): SessionContent => ({ id, classId: 'c1', sessionId: id, lessonContent: '', homework: '', comments: [], postedToLms: true })
+
+  it('đếm tổng buổi, buổi đã qua, buổi đã nhận xét', () => {
+    const map: Record<string, SessionContent> = { ss1: posted('ss1') }
+    expect(getClassProgress(sessions, id => map[id] ?? null, now)).toEqual({ total: 3, past: 2, commented: 1 })
+  })
+
+  it('không buổi nào -> tất cả 0', () => {
+    expect(getClassProgress([], () => null, now)).toEqual({ total: 0, past: 0, commented: 0 })
   })
 })
 

@@ -4,7 +4,7 @@ import { newId } from '../../../shared/id'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import { getClassStatus, ClassStatus } from '../../../shared/classStatus'
 import { computeContentTargets, mergeContentResult } from '../../../shared/lmsSync'
-import { getSessionContentStatus, findPreviousSession, copySessionContent, SessionContentStatus } from '../../../shared/sessionContent'
+import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress, SessionContentStatus } from '../../../shared/sessionContent'
 import ClassEditor from './ClassEditor'
 import SessionComposer from './SessionComposer'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -228,10 +228,21 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                 </div>
               </div>
               <div className="btn-row">
-                <button className="btn btn-sm" onClick={() => setEditing(c)}>Sửa</button>
-                <button className="btn btn-icon" aria-label={`Xóa lớp ${c.code}`} onClick={() => setPendingDelete(c)}>🗑</button>
+                <button className="btn btn-icon-box" aria-label={`Sửa lớp ${c.code}`} title="Sửa lớp" onClick={() => setEditing(c)}>✏️</button>
+                <button className="btn btn-icon-box danger" aria-label={`Xóa lớp ${c.code}`} title="Xóa lớp" onClick={() => setPendingDelete(c)}>🗑️</button>
               </div>
             </div>
+
+            {c.sessions.length > 0 && (() => {
+              const p = getClassProgress(c.sessions, id => sessionContents.get(id))
+              const pct = p.total > 0 ? Math.round((p.commented / p.total) * 100) : 0
+              return (
+                <div className="progress-wrap">
+                  <div className="progress-label">Tiến độ nhận xét: {p.commented}/{p.total} buổi ({pct}%)</div>
+                  <div className="progress"><span style={{ width: `${pct}%` }} /></div>
+                </div>
+              )
+            })()}
             {c.sessions.length > 0 && (
               <>
                 <hr className="divider" />
@@ -244,12 +255,19 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                     const prev = findPreviousSession(c.sessions, ss.id)
                     const prevContent = prev ? sessionContents.get(prev.id) : undefined
                     const canCopy = status === 'chưa có nội dung' && !!prevContent
+                    const isPast = new Date(ss.dateTime) < new Date()
+                    const rowClass = isPast
+                      ? (status === 'đã nhận xét' ? 'session-row is-past-done' : 'session-row is-past-todo')
+                      : 'session-row'
                     return (
-                      <div key={ss.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 13, minWidth: 132 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
+                      <div key={ss.id} className={rowClass}>
+                        <span className="session-date">
+                          {formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}
+                          {isPast && <span className="text-muted" style={{ fontSize: 11 }}> · đã qua</span>}
+                        </span>
                         <span className="badge" style={{ background: cs.background, color: cs.color }}>{status}</span>
                         <button
-                          className="btn btn-sm"
+                          className="btn btn-sm btn-session"
                           aria-label={`Soạn nội dung ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
                           onClick={() => setComposing({ cls: c, session: ss })}
                         >
@@ -257,7 +275,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                         </button>
                         {canCopy && (
                           <button
-                            className="btn btn-sm btn-ghost"
+                            className="btn btn-sm"
                             aria-label={`Sao chép buổi trước ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
                             onClick={() => void copyFromPrevious(c, ss)}
                           >

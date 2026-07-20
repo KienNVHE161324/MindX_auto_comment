@@ -8,6 +8,29 @@ export function getSessionContentStatus(content: SessionContent | null | undefin
   return 'đã soạn nội dung'
 }
 
+export interface ClassProgress {
+  total: number
+  /** Số buổi đã qua (dateTime < now) */
+  past: number
+  /** Số buổi đã gửi nhận xét lên LMS (postedToLms) */
+  commented: number
+}
+
+/** Tiến độ nhận xét của 1 lớp: đã nhận xét bao nhiêu / tổng số buổi đã qua. */
+export function getClassProgress(
+  sessions: ClassSession[],
+  getContent: (sessionId: string) => SessionContent | null | undefined,
+  now: Date = new Date(),
+): ClassProgress {
+  let past = 0
+  let commented = 0
+  for (const s of sessions) {
+    if (new Date(s.dateTime) < now) past++
+    if (getContent(s.id)?.postedToLms) commented++
+  }
+  return { total: sessions.length, past, commented }
+}
+
 /** Tìm buổi học gần nhất trước buổi hiện tại (theo dateTime), không phụ thuộc "now". */
 export function findPreviousSession(
   sessions: ClassSession[],
