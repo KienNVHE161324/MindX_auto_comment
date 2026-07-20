@@ -124,6 +124,27 @@ describe('SessionComposer', () => {
     expect(screen.queryByText(/đã lưu/i)).not.toBeInTheDocument()
   })
 
+  it('loại học sinh nghỉ (absentStudentIds) khỏi tin Zalo xem trước', async () => {
+    const clsWithTwo: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
+      sessions: [],
+    }
+    stub({
+      getContent: vi.fn(async () => ({
+        id: 'ss1', classId: 'c1', sessionId: 'ss1', lessonContent: 'Bài học', homework: 'BT',
+        comments: [{ studentId: 's1', raw: 'Ngoan', polished: 'Ngoan' }],
+        absentStudentIds: ['s2'],
+      })),
+    })
+    render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByLabelText(/nội dung bài học/i))
+    fireEvent.click(screen.getByText(/xem trước/i))
+    const pre = await screen.findByLabelText(/xem trước zalo/i)
+    expect(pre.textContent).toContain('An: Ngoan')
+    expect(pre.textContent).not.toContain('Bình')
+  })
+
   it('AI sửa thất bại hiển thị lỗi', async () => {
     stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)

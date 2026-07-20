@@ -50,6 +50,8 @@ export default function SessionComposer(
   const commentFor = (studentId: string): StudentComment =>
     content.comments.find(c => c.studentId === studentId) ?? { studentId, raw: '', polished: '' }
 
+  const isAbsent = (studentId: string): boolean => (content.absentStudentIds ?? []).includes(studentId)
+
   const setComment = (studentId: string, patch: Partial<StudentComment>): void =>
     mutate(prev => {
       const exists = prev.comments.some(c => c.studentId === studentId)
@@ -97,6 +99,7 @@ export default function SessionComposer(
 
       const sessionDate = session.dateTime.slice(0, 10) // 'YYYY-MM-DD'
       const comments = cls.students
+        .filter(s => !isAbsent(s.id))
         .map(s => {
           const cm = commentFor(s.id)
           return { studentName: s.name, text: cm.polished || cm.raw }
@@ -125,7 +128,9 @@ export default function SessionComposer(
       ngay_buoi_hoc: formatSessionDate(session.dateTime),
       noi_dung_bai_hoc: content.lessonContent,
       danh_sach_nhan_xet: formatCommentLines(
-        cls.students.map(s => ({ name: s.name, text: commentFor(s.id).polished || commentFor(s.id).raw })),
+        cls.students
+          .filter(s => !isAbsent(s.id))
+          .map(s => ({ name: s.name, text: commentFor(s.id).polished || commentFor(s.id).raw })),
       ),
       bai_tap_ve_nha: content.homework,
     })
