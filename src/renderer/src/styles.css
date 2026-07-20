@@ -131,8 +131,13 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 .btn-icon:hover { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
 
-/* Nút biểu tượng có khung (Sửa/Xóa) */
-.btn-icon-box { padding: 7px 10px; font-size: 15px; line-height: 1; color: var(--text-muted); }
+/* Nút biểu tượng có khung (Sửa/Xóa) — chứa SVG đơn sắc */
+.btn-icon-box {
+  padding: 0;
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+}
 .btn-icon-box:hover { color: var(--text); }
 .btn-icon-box.danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
@@ -154,16 +159,18 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .session-row.is-past-todo { border-left-color: var(--warning); background: #fffaf3; }
 .session-date { font-size: 13px; min-width: 132px; }
 
-/* ─── Progress ───────────────────────────────────────────────────────────── */
-.progress-wrap { margin-top: 10px; }
-.progress-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
-.progress {
-  height: 7px;
+/* ─── Progress (nhỏ, gắn trên dòng meta) ─────────────────────────────────── */
+.progress-mini {
+  display: inline-block;
+  vertical-align: middle;
+  width: 84px;
+  height: 5px;
   background: var(--border);
   border-radius: 999px;
   overflow: hidden;
+  margin-left: 2px;
 }
-.progress > span { display: block; height: 100%; background: var(--success); border-radius: 999px; transition: width .2s; }
+.progress-mini > span { display: block; height: 100%; background: var(--primary); border-radius: 999px; transition: width .2s; }
 
 /* ─── Cards ──────────────────────────────────────────────────────────────── */
 .card {

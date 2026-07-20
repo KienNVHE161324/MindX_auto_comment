@@ -140,24 +140,19 @@ describe('ClassesPage', () => {
     expect(screen.getByText('đã nhận xét')).toBeInTheDocument()
   })
 
-  it('hiển thị tiến độ nhận xét của lớp', async () => {
+  it('hiển thị số buổi đã qua của lớp', async () => {
     const cls: SchoolClass = {
       id: 'c3', code: 'C3', name: 'Lớp C3', students: [{ id: 's1', name: 'An' }],
       sessions: [
         { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
         { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
-        { id: 'ss3', dateTime: '2026-01-15T14:00:00' },
+        { id: 'ss3', dateTime: '2099-01-15T14:00:00' },
       ],
     }
-    stub({
-      listClasses: vi.fn(async () => [cls]),
-      getContent: vi.fn(async (sessionId: string) => (
-        sessionId === 'ss3' ? { id: 'ss3', classId: 'c3', sessionId: 'ss3', lessonContent: 'x', homework: '', comments: [], postedToLms: true } : null
-      )),
-    })
+    stub({ listClasses: vi.fn(async () => [cls]), getContent: vi.fn(async () => null) })
     render(<ClassesPage />)
     await waitFor(() => screen.getByText('C3'))
-    expect(screen.getByText(/tiến độ nhận xét: 1\/3 buổi/i)).toBeInTheDocument()
+    expect(screen.getByText(/đã qua 2\/3 buổi/i)).toBeInTheDocument()
   })
 
   it('nút "Sao chép buổi trước" chỉ hiện khi buổi chưa có nội dung và buổi trước đã có; bấm sẽ lưu bản sao', async () => {

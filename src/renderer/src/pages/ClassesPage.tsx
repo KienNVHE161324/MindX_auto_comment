@@ -8,6 +8,7 @@ import { getSessionContentStatus, findPreviousSession, copySessionContent, getCl
 import ClassEditor from './ClassEditor'
 import SessionComposer from './SessionComposer'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { EditIcon, TrashIcon } from '../components/Icons'
 
 function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
@@ -222,27 +223,27 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                     )
                   })()}
                 </div>
-                <div className="text-muted" style={{ fontSize: 13, marginTop: 4 }}>
-                  {c.students.length} học sinh · {c.sessions.length} buổi
-                  {c.autoSend?.enabled && <> · <span className="text-success">⏰ tự động {c.autoSend.time}</span></>}
+                <div className="text-muted" style={{ fontSize: 13, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span>{c.students.length} học sinh · {c.sessions.length} buổi</span>
+                  {(() => {
+                    const p = getClassProgress(c.sessions, id => sessionContents.get(id))
+                    if (p.total === 0) return null
+                    const pct = Math.round((p.past / p.total) * 100)
+                    return (
+                      <>
+                        <span>· đã qua {p.past}/{p.total} buổi</span>
+                        <span className="progress-mini"><span style={{ width: `${pct}%` }} /></span>
+                      </>
+                    )
+                  })()}
+                  {c.autoSend?.enabled && <span>· <span className="text-success">⏰ tự động {c.autoSend.time}</span></span>}
                 </div>
               </div>
               <div className="btn-row">
-                <button className="btn btn-icon-box" aria-label={`Sửa lớp ${c.code}`} title="Sửa lớp" onClick={() => setEditing(c)}>✏️</button>
-                <button className="btn btn-icon-box danger" aria-label={`Xóa lớp ${c.code}`} title="Xóa lớp" onClick={() => setPendingDelete(c)}>🗑️</button>
+                <button className="btn btn-icon-box" aria-label={`Sửa lớp ${c.code}`} title="Sửa lớp" onClick={() => setEditing(c)}><EditIcon /></button>
+                <button className="btn btn-icon-box danger" aria-label={`Xóa lớp ${c.code}`} title="Xóa lớp" onClick={() => setPendingDelete(c)}><TrashIcon /></button>
               </div>
             </div>
-
-            {c.sessions.length > 0 && (() => {
-              const p = getClassProgress(c.sessions, id => sessionContents.get(id))
-              const pct = p.total > 0 ? Math.round((p.commented / p.total) * 100) : 0
-              return (
-                <div className="progress-wrap">
-                  <div className="progress-label">Tiến độ nhận xét: {p.commented}/{p.total} buổi ({pct}%)</div>
-                  <div className="progress"><span style={{ width: `${pct}%` }} /></div>
-                </div>
-              )
-            })()}
             {c.sessions.length > 0 && (
               <>
                 <hr className="divider" />
@@ -261,10 +262,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                       : 'session-row'
                     return (
                       <div key={ss.id} className={rowClass}>
-                        <span className="session-date">
-                          {formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}
-                          {isPast && <span className="text-muted" style={{ fontSize: 11 }}> · đã qua</span>}
-                        </span>
+                        <span className="session-date">{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
                         <span className="badge" style={{ background: cs.background, color: cs.color }}>{status}</span>
                         <button
                           className="btn btn-sm btn-session"
