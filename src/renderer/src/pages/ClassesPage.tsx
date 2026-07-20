@@ -2,22 +2,13 @@ import { useEffect, useState } from 'react'
 import { SchoolClass, ClassSession, LmsScrapedClass } from '../../../shared/types'
 import { newId } from '../../../shared/id'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
+import { getClassStatus, ClassStatus } from '../../../shared/classStatus'
+import { computeContentTargets, mergeContentResult } from '../../../shared/lmsSync'
 import ClassEditor from './ClassEditor'
 import SessionComposer from './SessionComposer'
 
 function emptyClass(): SchoolClass {
   return { id: newId(), code: '', name: '', students: [], sessions: [] }
-}
-
-type ClassStatus = 'chưa bắt đầu' | 'đang diễn ra' | 'đã kết thúc'
-
-function getClassStatus(sessions: ClassSession[]): ClassStatus {
-  if (sessions.length === 0) return 'chưa bắt đầu'
-  const now = new Date()
-  const dates = sessions.map(s => new Date(s.dateTime)).sort((a, b) => a.getTime() - b.getTime())
-  if (now < dates[0]) return 'chưa bắt đầu'
-  if (now > dates[dates.length - 1]) return 'đã kết thúc'
-  return 'đang diễn ra'
 }
 
 const STATUS_STYLE: Record<ClassStatus, { background: string; color: string }> = {
@@ -35,6 +26,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [syncPreview, setSyncPreview] = useState<LmsScrapedClass[] | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [commentedSessions, setCommentedSessions] = useState<Set<string>>(new Set())
+  const [syncSummary, setSyncSummary] = useState<{ updated: number; skipped: number } | null>(null)
 
   const reload = async (): Promise<void> => {
     try {
@@ -63,14 +55,33 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const syncFromLms = async (): Promise<void> => {
     setSyncing(true)
     setSyncError(null)
+    setSyncSummary(null)
     try {
       const { loggedIn } = await window.api.lmsOpenBrowser()
       if (!loggedIn) {
         setSyncError('Hết thời gian chờ đăng nhập LMS (3 phút). Thử lại sau khi đăng nhập.')
         return
       }
-      const { classes: scraped } = await window.api.lmsSyncClasses()
-      setSyncPreview(scraped)
+      const existingCodes = classes.map(c => c.code)
+      const contentTargets = computeContentTargets(classes, id => commentedSessions.has(id))
+
+      const { newClasses, contentResults, skippedClasses } = await window.api.lmsSyncAll({
+        existingCodes,
+        contentTargets,
+      })
+
+      for (const result of contentResults) {
+        const cls = classes.find(c => c.code === result.classCode)
+        const target = contentTargets.find(t => t.classCode === result.classCode)
+        const session = cls?.sessions.find(s => s.id === target?.sessionId)
+        if (cls && session) {
+          await window.api.saveContent(mergeContentResult(cls, session, result))
+        }
+      }
+
+      setSyncPreview(newClasses)
+      setSyncSummary({ updated: contentResults.length, skipped: skippedClasses.length })
+      if (contentResults.length > 0) await reload()
     } catch (err) {
       setSyncError((err as Error).message)
     } finally {
@@ -131,7 +142,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
           <button onClick={() => void reload()}>Tải lại</button>{' '}
           <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>{' '}
           <button onClick={() => void syncFromLms()} disabled={syncing}>
-            {syncing ? 'Đang tải từ LMS...' : 'Tự động thêm lớp từ LMS'}
+            {syncing ? 'Đang đồng bộ...' : 'Đồng bộ từ LMS'}
           </button>
         </div>
       </div>
@@ -142,6 +153,13 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         </p>
       )}
       {syncError && <p style={{ color: 'crimson' }}>Lỗi kết nối LMS: {syncError}</p>}
+
+      {syncSummary && (
+        <p style={{ color: '#555' }}>
+          Đã cập nhật nội dung {syncSummary.updated} buổi
+          {syncSummary.skipped > 0 ? `, bỏ qua ${syncSummary.skipped} lớp (LMS chưa có nội dung buổi mới nhất)` : ''}.
+        </p>
+      )}
 
       {syncPreview && (
         <div style={{ border: '1px solid #aaa', borderRadius: 8, padding: 12, marginBottom: 16, background: '#f9f9f9' }}>
