@@ -18,6 +18,12 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
   const setCode = (code: string): void => setDraft(prev => ({ ...prev, code }))
   const setName = (name: string): void => setDraft(prev => ({ ...prev, name }))
 
+  const autoSend = draft.autoSend ?? { enabled: false, time: '18:00' }
+  const setAutoSendEnabled = (enabled: boolean): void =>
+    setDraft(prev => ({ ...prev, autoSend: { ...autoSend, enabled } }))
+  const setAutoSendTime = (time: string): void =>
+    setDraft(prev => ({ ...prev, autoSend: { ...autoSend, time } }))
+
   const addStudent = (): void =>
     setDraft(prev => ({ ...prev, students: [...prev.students, { id: newId(), name: '' }] }))
   const setStudent = (id: string, name: string): void =>
@@ -101,6 +107,28 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
         )
       })}
       <button onClick={addSession}>+ Thêm buổi</button>
+
+      <h3 style={{ marginTop: 20 }}>Gửi tự động</h3>
+      <div style={{ marginBottom: 20 }}>
+        <label>
+          <input
+            type="checkbox"
+            checked={autoSend.enabled}
+            onChange={e => setAutoSendEnabled(e.target.checked)}
+          />{' '}
+          Tự động gửi LMS/Zalo hằng ngày lúc
+        </label>{' '}
+        <input
+          type="time"
+          aria-label="Giờ gửi tự động"
+          value={autoSend.time}
+          disabled={!autoSend.enabled}
+          onChange={e => setAutoSendTime(e.target.value)}
+        />
+        <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+          Chỉ gửi nội dung của buổi học gần nhất đã qua và đã được soạn.
+        </div>
+      </div>
 
       <div style={{ marginTop: 24 }}>
         <button onClick={save}>Lưu</button>
