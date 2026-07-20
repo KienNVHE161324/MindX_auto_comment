@@ -1,0 +1,95 @@
+import { describe, it, expect } from 'vitest'
+import { nearestPastSession, isAutoSendDue, planAutoSend, buildZaloMessage } from './autoSend'
+import { SchoolClass, ClassSession, SessionContent } from './types'
+
+describe('nearestPastSession', () => {
+  const sessions: ClassSession[] = [
+    { id: 'ss1', dateTime: '2026-07-01T14:00:00' },
+    { id: 'ss2', dateTime: '2026-07-10T14:00:00' },
+    { id: 'ss3', dateTime: '2026-08-01T14:00:00' },
+  ]
+  it('trả về buổi đã qua gần nhất', () => {
+    const now = new Date('2026-07-17T00:00:00')
+    expect(nearestPastSession(sessions, now)?.id).toBe('ss2')
+  })
+  it('không có buổi nào đã qua -> undefined', () => {
+    const now = new Date('2026-01-01T00:00:00')
+    expect(nearestPastSession(sessions, now)).toBeUndefined()
+  })
+})
+
+describe('isAutoSendDue', () => {
+  it('now sau giờ hẹn cùng ngày -> true', () => {
+    expect(isAutoSendDue('18:00', new Date('2026-07-17T19:00:00'))).toBe(true)
+  })
+  it('now trước giờ hẹn cùng ngày -> false', () => {
+    expect(isAutoSendDue('18:00', new Date('2026-07-17T17:00:00'))).toBe(false)
+  })
+  it('sai định dạng giờ -> false', () => {
+    expect(isAutoSendDue('bad', new Date())).toBe(false)
+  })
+})
+
+describe('planAutoSend', () => {
+  const now = new Date('2026-07-17T19:00:00')
+  const cls: SchoolClass = {
+    id: 'c1', code: 'A1', name: 'A1', students: [{ id: 's1', name: 'An' }],
+    sessions: [{ id: 'ss1', dateTime: '2026-07-10T14:00:00' }],
+    autoSend: { enabled: true, time: '18:00' },
+  }
+  const content: SessionContent = {
+    id: 'ss1', classId: 'c1', sessionId: 'ss1', lessonContent: 'x', homework: '', comments: [],
+  }
+
+  it('chưa bật autoSend -> null', () => {
+    expect(planAutoSend({ ...cls, autoSend: { enabled: false, time: '18:00' } }, content, now)).toBeNull()
+  })
+
+  it('chưa tới giờ hẹn -> null', () => {
+    expect(planAutoSend(cls, content, new Date('2026-07-17T10:00:00'))).toBeNull()
+  })
+
+  it('chưa có content -> null', () => {
+    expect(planAutoSend(cls, null, now)).toBeNull()
+  })
+
+  it('đã gửi cả 2 kênh -> null', () => {
+    expect(planAutoSend(cls, { ...content, postedToLms: true, zaloSentAt: '2026-07-17T18:01:00' }, now)).toBeNull()
+  })
+
+  it('đủ điều kiện -> trả về plan đúng buổi + việc cần làm', () => {
+    expect(planAutoSend(cls, content, now)).toEqual({
+      session: cls.sessions[0], content, needLms: true, needZalo: true,
+    })
+  })
+
+  it('đã gửi LMS rồi -> chỉ cần Zalo', () => {
+    const posted = { ...content, postedToLms: true }
+    expect(planAutoSend(cls, posted, now)).toEqual({
+      session: cls.sessions[0], content: posted, needLms: false, needZalo: true,
+    })
+  })
+})
+
+describe('buildZaloMessage', () => {
+  it('loại HS nghỉ, điền đúng template', () => {
+    const cls: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
+      sessions: [],
+    }
+    const session: ClassSession = { id: 'ss1', dateTime: '2026-07-10T14:00:00' }
+    const content: SessionContent = {
+      id: 'ss1', classId: 'c1', sessionId: 'ss1',
+      lessonContent: 'Phép cộng', homework: 'Làm bài 5',
+      comments: [{ studentId: 's1', raw: 'ngoan', polished: '' }],
+      absentStudentIds: ['s2'],
+    }
+    const msg = buildZaloMessage(cls, session, content, 'Lớp {ten_lop}\n{noi_dung_bai_hoc}\n{danh_sach_nhan_xet}\n{bai_tap_ve_nha}')
+    expect(msg).toContain('Lớp Lớp A1')
+    expect(msg).toContain('Phép cộng')
+    expect(msg).toContain('An: ngoan')
+    expect(msg).not.toContain('Bình')
+    expect(msg).toContain('Làm bài 5')
+  })
+})

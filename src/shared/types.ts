@@ -28,12 +28,19 @@ export interface ClassSession {
   label?: string
 }
 
+export interface AutoSendConfig {
+  enabled: boolean
+  /** Giờ hẹn gửi tự động mỗi ngày, định dạng 'HH:mm' (24h) */
+  time: string
+}
+
 export interface SchoolClass {
   id: string
   code: string
   name: string
   students: Student[]
   sessions: ClassSession[]
+  autoSend?: AutoSendConfig
 }
 
 export interface StudentComment {
@@ -52,6 +59,8 @@ export interface SessionContent {
   absentStudentIds?: string[]
   /** true khi đã gửi lên LMS thành công (có HS được nhận xét, không lỗi) */
   postedToLms?: boolean
+  /** ISO timestamp khi tin Zalo đã được gửi tự động (ghi file/gửi thật) */
+  zaloSentAt?: string
 }
 
 export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
