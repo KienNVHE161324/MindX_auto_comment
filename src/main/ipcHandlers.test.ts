@@ -136,7 +136,7 @@ describe('createIpcHandlers — LMS automation', () => {
       extractPdf: vi.fn(), rewrite: vi.fn(),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
-      lmsSyncClasses: vi.fn(async () => ({ classes: [] })),
+      lmsSyncAll: vi.fn(async () => ({ newClasses: [], contentResults: [], skippedClasses: [] })),
     }
   }
 
@@ -161,11 +161,12 @@ describe('createIpcHandlers — LMS automation', () => {
     expect(deps.lmsPostSession).toHaveBeenCalledWith(params)
   })
 
-  it('lmsSyncClasses ủy quyền cho dep', async () => {
+  it('lmsSyncAll truyền params và ủy quyền cho dep', async () => {
     const deps = makeDeps()
     const api = createIpcHandlers(deps as never)
-    const res = await api.lmsSyncClasses()
-    expect(res).toEqual({ classes: [] })
-    expect(deps.lmsSyncClasses).toHaveBeenCalledOnce()
+    const params = { existingCodes: ['A1'], contentTargets: [{ classCode: 'A1', sessionId: 'ss1', sessionDate: '2026-07-10' }] }
+    const res = await api.lmsSyncAll(params)
+    expect(res).toEqual({ newClasses: [], contentResults: [], skippedClasses: [] })
+    expect(deps.lmsSyncAll).toHaveBeenCalledWith(params)
   })
 })

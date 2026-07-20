@@ -16,7 +16,7 @@ const api: AppApi = {
   rewriteComment: (studentName, raw) => ipcRenderer.invoke(IPC.rewriteComment, studentName, raw),
   lmsOpenBrowser: () => ipcRenderer.invoke(IPC.lmsOpenBrowser),
   lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
-  lmsSyncClasses: () => ipcRenderer.invoke(IPC.lmsSyncClasses),
+  lmsSyncAll: (params) => ipcRenderer.invoke(IPC.lmsSyncAll, params),
 }
 
 contextBridge.exposeInMainWorld('api', api)

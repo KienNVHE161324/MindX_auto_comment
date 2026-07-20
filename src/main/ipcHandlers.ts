@@ -1,6 +1,6 @@
 import {
   AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent,
-  LmsPostParams, LmsPostResult, LmsSyncResult,
+  LmsPostParams, LmsPostResult, LmsContentTarget, LmsSyncAllResult,
 } from '../shared/types'
 import { ConfigStore } from './config/configStore'
 import { ClassRepository } from './classes/ClassRepository'
@@ -16,7 +16,7 @@ export interface IpcDeps {
   rewrite: (studentName: string, raw: string) => Promise<string>
   lmsOpenBrowser: () => Promise<{ loggedIn: boolean }>
   lmsPostSession: (params: LmsPostParams) => Promise<LmsPostResult>
-  lmsSyncClasses: () => Promise<LmsSyncResult>
+  lmsSyncAll: (params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }) => Promise<LmsSyncAllResult>
 }
 
 export function createIpcHandlers(deps: IpcDeps): AppApi {
@@ -35,6 +35,6 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
     rewriteComment: (studentName: string, raw: string) => deps.rewrite(studentName, raw),
     lmsOpenBrowser: () => deps.lmsOpenBrowser(),
     lmsPostSession: (params: LmsPostParams) => deps.lmsPostSession(params),
-    lmsSyncClasses: () => deps.lmsSyncClasses(),
+    lmsSyncAll: (params) => deps.lmsSyncAll(params),
   }
 }

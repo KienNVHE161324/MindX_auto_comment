@@ -82,11 +82,7 @@ function registerIpc(): void {
       return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
     },
     lmsPostSession: (params) => lmsAutomator.postSession(params),
-    lmsSyncClasses: async () => {
-      const repo = await getRepository()
-      const existing = await repo.list()
-      return lmsAutomator.syncClasses(existing.map(c => c.code))
-    },
+    lmsSyncAll: (params) => lmsAutomator.syncAll(params.existingCodes, params.contentTargets),
   })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
@@ -103,7 +99,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
   ipcMain.handle(IPC.lmsOpenBrowser, () => handlers.lmsOpenBrowser())
   ipcMain.handle(IPC.lmsPostSession, (_e, params) => handlers.lmsPostSession(params))
-  ipcMain.handle(IPC.lmsSyncClasses, () => handlers.lmsSyncClasses())
+  ipcMain.handle(IPC.lmsSyncAll, (_e, params) => handlers.lmsSyncAll(params))
 }
 
 app.whenReady().then(() => {
