@@ -7,6 +7,8 @@ export default function SettingsPage(): JSX.Element {
   const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
   const [keyStatus, setKeyStatus] = useState<KeyStatus>({ checked: false, valid: false })
   const [saved, setSaved] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [lmsSaved, setLmsSaved] = useState(false)
 
   useEffect(() => {
     window.api.getConfig().then(setConfig)
@@ -34,6 +36,12 @@ export default function SettingsPage(): JSX.Element {
   const save = async (): Promise<void> => {
     await window.api.updateConfig(config)
     setSaved(true)
+  }
+
+  // Lưu ngay tài khoản LMS khi rời ô nhập, để giá trị không bị mất nếu quên bấm "Lưu".
+  const persistLms = async (): Promise<void> => {
+    await window.api.updateConfig({ lmsEmail: config.lmsEmail, lmsPassword: config.lmsPassword })
+    setLmsSaved(true)
   }
 
   return (
@@ -121,7 +129,7 @@ export default function SettingsPage(): JSX.Element {
       <section className="section">
         <h2>Tài khoản LMS</h2>
         <p className="field-hint" style={{ margin: '0 0 12px' }}>
-          App sẽ tự đăng nhập LMS khi cần — không phải nhập thủ công mỗi lần.
+          App sẽ tự đăng nhập LMS khi cần — không phải nhập thủ công mỗi lần. Giá trị được lưu ngay khi bạn rời khỏi ô.
         </p>
         <div className="field">
           <label htmlFor="lms-email">Email LMS</label>
@@ -131,20 +139,33 @@ export default function SettingsPage(): JSX.Element {
             style={{ maxWidth: 320 }}
             type="email"
             value={config.lmsEmail ?? ''}
-            onChange={e => set('lmsEmail', e.target.value || null)}
+            onChange={e => { set('lmsEmail', e.target.value || null); setLmsSaved(false) }}
+            onBlur={() => void persistLms()}
             placeholder="email@mindx.edu.vn"
           />
         </div>
         <div className="field" style={{ marginBottom: 0 }}>
           <label htmlFor="lms-password">Mật khẩu LMS</label>
-          <input
-            id="lms-password"
-            className="input"
-            style={{ maxWidth: 320 }}
-            type="password"
-            value={config.lmsPassword ?? ''}
-            onChange={e => set('lmsPassword', e.target.value || null)}
-          />
+          <div className="btn-row">
+            <input
+              id="lms-password"
+              className="input"
+              style={{ maxWidth: 320 }}
+              type={showPassword ? 'text' : 'password'}
+              value={config.lmsPassword ?? ''}
+              onChange={e => { set('lmsPassword', e.target.value || null); setLmsSaved(false) }}
+              onBlur={() => void persistLms()}
+            />
+            <button
+              type="button"
+              className="btn btn-sm"
+              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              onClick={() => setShowPassword(v => !v)}
+            >
+              {showPassword ? 'Ẩn' : 'Hiện'}
+            </button>
+          </div>
+          {lmsSaved && <span className="text-success" style={{ fontSize: 13 }}>Đã lưu tài khoản LMS ✓</span>}
         </div>
       </section>
 

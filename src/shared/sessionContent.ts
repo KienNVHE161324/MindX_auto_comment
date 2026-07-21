@@ -31,6 +31,25 @@ export function getClassProgress(
   return { total: sessions.length, past, commented }
 }
 
+/**
+ * Buổi #4 và #9 (theo thứ tự thời gian) có cơ chế đặc biệt (làm ở phase sau) —
+ * tạm chặn gửi lên LMS cho 2 buổi này.
+ */
+export const LMS_BLOCKED_SESSION_NUMBERS = [4, 9]
+
+/** Số thứ tự buổi theo thời gian (1-based). 0 nếu không tìm thấy. */
+export function getSessionNumber(sessions: ClassSession[], sessionId: string): number {
+  const ordered = [...sessions].sort(
+    (a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime(),
+  )
+  return ordered.findIndex(s => s.id === sessionId) + 1
+}
+
+/** true nếu buổi này bị chặn gửi LMS (buổi #4 hoặc #9). */
+export function isLmsBlockedSession(sessions: ClassSession[], sessionId: string): boolean {
+  return LMS_BLOCKED_SESSION_NUMBERS.includes(getSessionNumber(sessions, sessionId))
+}
+
 /** Tìm buổi học gần nhất trước buổi hiện tại (theo dateTime), không phụ thuộc "now". */
 export function findPreviousSession(
   sessions: ClassSession[],

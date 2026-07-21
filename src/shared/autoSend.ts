@@ -1,5 +1,6 @@
 import { SchoolClass, ClassSession, SessionContent } from './types'
 import { fillTemplate, formatCommentLines, formatSessionDate } from './zaloTemplate'
+import { isLmsBlockedSession } from './sessionContent'
 
 /** Buổi học gần nhất có dateTime < now (không phụ thuộc trạng thái nội dung). */
 export function nearestPastSession(sessions: ClassSession[], now: Date = new Date()): ClassSession | undefined {
@@ -38,7 +39,8 @@ export function planAutoSend(cls: SchoolClass, content: SessionContent | null, n
   if (!session) return null
   if (!content) return null
 
-  const needLms = !content.postedToLms
+  // Buổi #4/#9 có cơ chế đặc biệt → chặn gửi LMS (phase sau mới xử lý)
+  const needLms = !content.postedToLms && !isLmsBlockedSession(cls.sessions, session.id)
   const needZalo = !content.zaloSentAt
   if (!needLms && !needZalo) return null
 

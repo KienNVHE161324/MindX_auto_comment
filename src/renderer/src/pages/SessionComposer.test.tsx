@@ -51,16 +51,15 @@ describe('SessionComposer', () => {
     expect(api.extractLessonFromPdf).toHaveBeenCalled()
   })
 
-  it('"Sửa bằng AI" điền kết quả vào ô duy nhất, "Hoàn tác" phục hồi về bản thô', async () => {
+  it('"Sửa tất cả bằng AI" điền kết quả cho mọi HS, "Hoàn tác tất cả" phục hồi bản thô', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
     fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
-    fireEvent.click(screen.getByLabelText(/AI sửa An/i))
+    fireEvent.click(screen.getByText(/sửa tất cả bằng AI/i))
     await waitFor(() => expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('Em An ngoan, tích cực.'))
     expect(api.rewriteComment).toHaveBeenCalledWith('An', 'ngoan')
-    expect(screen.getByLabelText(/hoàn tác An/i)).toBeInTheDocument()
-    fireEvent.click(screen.getByLabelText(/hoàn tác An/i))
+    fireEvent.click(screen.getByText(/hoàn tác tất cả/i))
     expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('ngoan')
   })
 
@@ -175,7 +174,26 @@ describe('SessionComposer', () => {
     stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
-    fireEvent.click(screen.getByLabelText(/AI sửa An/i))
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
+    fireEvent.click(screen.getByText(/sửa tất cả bằng AI/i))
     await waitFor(() => expect(screen.getByText(/chưa cấu hình api key/i)).toBeInTheDocument())
+  })
+
+  it('buổi #4 bị khóa gửi LMS: nút bị vô hiệu + hiện thông báo', async () => {
+    const clsWith4: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }],
+      sessions: [
+        { id: 'b1', dateTime: '2026-07-01T14:00:00' },
+        { id: 'b2', dateTime: '2026-07-03T14:00:00' },
+        { id: 'b3', dateTime: '2026-07-05T14:00:00' },
+        { id: 'b4', dateTime: '2026-07-08T14:00:00' },
+      ],
+    }
+    const s4: ClassSession = { id: 'b4', dateTime: '2026-07-08T14:00:00' }
+    render(<SessionComposer cls={clsWith4} session={s4} onDone={() => {}} />)
+    await waitFor(() => screen.getByRole('button', { name: /gửi lên lms/i }))
+    expect(screen.getByRole('button', { name: /gửi lên lms/i })).toBeDisabled()
+    expect(screen.getByText(/cơ chế đặc biệt/i)).toBeInTheDocument()
   })
 })

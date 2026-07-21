@@ -4,6 +4,7 @@ import {
   LmsPostResult,
 } from '../../../shared/types'
 import { fillTemplate, formatCommentLines, formatSessionDate } from '../../../shared/zaloTemplate'
+import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
   return {
@@ -24,10 +25,13 @@ export default function SessionComposer(
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
-  const [rewritingIds, setRewritingIds] = useState<Set<string>>(new Set())
+  const [rewritingAll, setRewritingAll] = useState(false)
   const [lmsPosting, setLmsPosting] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
+
+  const sessionNum = getSessionNumber(cls.sessions, session.id)
+  const lmsBlocked = isLmsBlockedSession(cls.sessions, session.id)
 
   useEffect(() => {
     void window.api.getConfig().then(setConfig)
@@ -71,20 +75,37 @@ export default function SessionComposer(
     }
   }
 
-  const aiRewrite = async (studentId: string, name: string): Promise<void> => {
-    setRewritingIds(prev => new Set(prev).add(studentId))
+  // Sửa nhận xét cho TẤT CẢ học sinh (có mặt + có nội dung thô) bằng 1 nút.
+  const aiRewriteAll = async (): Promise<void> => {
+    setRewritingAll(true)
     try {
-      const polished = await window.api.rewriteComment(name, commentFor(studentId).raw)
-      setComment(studentId, { polished })
+      const targets = cls.students.filter(s => !isAbsent(s.id) && commentFor(s.id).raw.trim() !== '')
+      const results: { id: string; polished: string }[] = []
+      for (const s of targets) {
+        results.push({ id: s.id, polished: await window.api.rewriteComment(s.name, commentFor(s.id).raw) })
+      }
+      mutate(prev => ({
+        ...prev,
+        comments: prev.comments.map(c => {
+          const r = results.find(x => x.id === c.studentId)
+          return r ? { ...c, polished: r.polished } : c
+        }),
+      }))
       setError(null)
     } catch (err) {
       setError((err as Error).message)
     } finally {
-      setRewritingIds(prev => { const next = new Set(prev); next.delete(studentId); return next })
+      setRewritingAll(false)
     }
   }
 
+  const undoAllAi = (): void =>
+    mutate(prev => ({ ...prev, comments: prev.comments.map(c => ({ ...c, polished: '' })) }))
+
+  const anyPolished = content.comments.some(c => c.polished)
+
   const postToLms = async (): Promise<void> => {
+    if (lmsBlocked) return
     setLmsPosting(true)
     setLmsResult(null)
     setError(null)
@@ -178,12 +199,21 @@ export default function SessionComposer(
       </section>
 
       <section className="section">
-        <h3>Nhận xét học sinh</h3>
+        <div className="row-between" style={{ marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>Nhận xét học sinh</h3>
+          <div className="btn-row">
+            <button className="btn btn-sm btn-primary" onClick={aiRewriteAll} disabled={rewritingAll || cls.students.length === 0}>
+              {rewritingAll ? 'Đang sửa...' : 'Sửa tất cả bằng AI'}
+            </button>
+            {anyPolished && (
+              <button className="btn btn-sm btn-ghost" onClick={undoAllAi}>Hoàn tác tất cả</button>
+            )}
+          </div>
+        </div>
         {cls.students.length === 0 && <p className="text-muted">Lớp chưa có học sinh.</p>}
         <div className="stack" style={{ gap: 14 }}>
           {cls.students.map(s => {
             const cm = commentFor(s.id)
-            const isRewriting = rewritingIds.has(s.id)
             const absent = isAbsent(s.id)
             return (
               <div key={s.id}>
@@ -207,25 +237,6 @@ export default function SessionComposer(
                     }
                   }}
                 />
-                <div className="btn-row" style={{ marginTop: 6 }}>
-                  <button
-                    className="btn btn-sm"
-                    aria-label={`AI sửa ${s.name}`}
-                    disabled={isRewriting}
-                    onClick={() => aiRewrite(s.id, s.name)}
-                  >
-                    {isRewriting ? 'Đang sửa...' : 'Sửa bằng AI'}
-                  </button>
-                  {cm.polished && (
-                    <button
-                      className="btn btn-sm btn-ghost"
-                      aria-label={`Hoàn tác ${s.name}`}
-                      onClick={() => setComment(s.id, { polished: '' })}
-                    >
-                      Hoàn tác
-                    </button>
-                  )}
-                </div>
               </div>
             )
           })}
@@ -251,10 +262,16 @@ export default function SessionComposer(
         <button className="btn btn-primary" onClick={save}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={postToLms} disabled={lmsPosting}>
+        <button className="btn btn-primary" onClick={postToLms} disabled={lmsPosting || lmsBlocked}>
           {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
       </div>
+
+      {lmsBlocked && (
+        <p className="alert alert-info">
+          Buổi #{sessionNum} có cơ chế đặc biệt — tạm khóa gửi lên LMS (sẽ bổ sung ở phase sau). Bạn vẫn soạn/lưu và xem trước Zalo bình thường.
+        </p>
+      )}
 
       {lmsResult && (
         <div className="card card-pad" style={{ fontSize: 13, marginBottom: 16 }}>

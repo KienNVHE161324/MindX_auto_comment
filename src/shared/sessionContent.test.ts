@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress } from './sessionContent'
+import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress, getSessionNumber, isLmsBlockedSession } from './sessionContent'
 import { ClassSession, SessionContent } from './types'
 
 describe('getSessionContentStatus', () => {
@@ -60,6 +60,35 @@ describe('getClassProgress', () => {
 
   it('không buổi nào -> tất cả 0', () => {
     expect(getClassProgress([], () => null, now)).toEqual({ total: 0, past: 0, commented: 0 })
+  })
+})
+
+describe('getSessionNumber / isLmsBlockedSession', () => {
+  // Cố tình xáo trộn thứ tự để kiểm tra sắp xếp theo thời gian
+  const sessions: ClassSession[] = [
+    { id: 's3', dateTime: '2026-07-15T14:00:00' },
+    { id: 's1', dateTime: '2026-07-01T14:00:00' },
+    { id: 's4', dateTime: '2026-07-22T14:00:00' },
+    { id: 's2', dateTime: '2026-07-08T14:00:00' },
+    { id: 's9', dateTime: '2026-09-01T14:00:00' },
+  ]
+
+  it('đánh số theo thứ tự thời gian, không theo thứ tự mảng', () => {
+    expect(getSessionNumber(sessions, 's1')).toBe(1)
+    expect(getSessionNumber(sessions, 's2')).toBe(2)
+    expect(getSessionNumber(sessions, 's4')).toBe(4)
+  })
+
+  it('sessionId không tồn tại -> 0', () => {
+    expect(getSessionNumber(sessions, 'x')).toBe(0)
+  })
+
+  it('buổi #4 bị chặn LMS', () => {
+    expect(isLmsBlockedSession(sessions, 's4')).toBe(true)
+  })
+
+  it('buổi #1 không bị chặn', () => {
+    expect(isLmsBlockedSession(sessions, 's1')).toBe(false)
   })
 })
 

@@ -69,6 +69,24 @@ describe('planAutoSend', () => {
       session: cls.sessions[0], content: posted, needLms: false, needZalo: true,
     })
   })
+
+  it('buổi #4 (bị chặn LMS) -> needLms=false, chỉ gửi Zalo', () => {
+    // 4 buổi đã qua, buổi gần nhất là #4 → bị chặn LMS
+    const blockedCls: SchoolClass = {
+      ...cls,
+      sessions: [
+        { id: 's1', dateTime: '2026-07-01T14:00:00' },
+        { id: 's2', dateTime: '2026-07-03T14:00:00' },
+        { id: 's3', dateTime: '2026-07-05T14:00:00' },
+        { id: 's4', dateTime: '2026-07-10T14:00:00' },
+      ],
+    }
+    const c4: SessionContent = { ...content, id: 's4', sessionId: 's4' }
+    const plan = planAutoSend(blockedCls, c4, now)
+    expect(plan?.session.id).toBe('s4')
+    expect(plan?.needLms).toBe(false)
+    expect(plan?.needZalo).toBe(true)
+  })
 })
 
 describe('buildZaloMessage', () => {
