@@ -13,6 +13,7 @@ function stub(overrides: Partial<Window['api']> = {}) {
     saveContent: vi.fn(async () => {}),
     extractLessonFromPdf: vi.fn(async () => 'Bài học từ PDF'),
     rewriteComment: vi.fn(async () => 'Em An ngoan, tích cực.'),
+    rewriteCommentsBatch: vi.fn(async (items: { name: string; raw: string }[]) => items.map(() => 'Em An ngoan, tích cực.')),
     ...overrides,
   }
   ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
@@ -58,7 +59,7 @@ describe('SessionComposer', () => {
     fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
     fireEvent.click(screen.getByText(/sửa tất cả bằng AI/i))
     await waitFor(() => expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('Em An ngoan, tích cực.'))
-    expect(api.rewriteComment).toHaveBeenCalledWith('An', 'ngoan')
+    expect(api.rewriteCommentsBatch).toHaveBeenCalledWith([{ name: 'An', raw: 'ngoan' }])
     fireEvent.click(screen.getByText(/hoàn tác tất cả/i))
     expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('ngoan')
   })
@@ -171,7 +172,7 @@ describe('SessionComposer', () => {
   })
 
   it('AI sửa thất bại hiển thị lỗi', async () => {
-    stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
+    stub({ rewriteCommentsBatch: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
     fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })

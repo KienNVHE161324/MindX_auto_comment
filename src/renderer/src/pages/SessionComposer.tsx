@@ -5,6 +5,7 @@ import {
 } from '../../../shared/types'
 import { fillTemplate, formatCommentLines, formatSessionDate } from '../../../shared/zaloTemplate'
 import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
+import { ArrowLeftIcon } from '../components/Icons'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
   return {
@@ -75,20 +76,20 @@ export default function SessionComposer(
     }
   }
 
-  // Sửa nhận xét cho TẤT CẢ học sinh (có mặt + có nội dung thô) bằng 1 nút.
+  // Sửa nhận xét cho TẤT CẢ học sinh (có mặt + có nội dung thô) trong 1 request Gemini.
   const aiRewriteAll = async (): Promise<void> => {
     setRewritingAll(true)
     try {
       const targets = cls.students.filter(s => !isAbsent(s.id) && commentFor(s.id).raw.trim() !== '')
-      const results: { id: string; polished: string }[] = []
-      for (const s of targets) {
-        results.push({ id: s.id, polished: await window.api.rewriteComment(s.name, commentFor(s.id).raw) })
-      }
+      if (targets.length === 0) { setRewritingAll(false); return }
+      const polishedList = await window.api.rewriteCommentsBatch(
+        targets.map(s => ({ name: s.name, raw: commentFor(s.id).raw })),
+      )
       mutate(prev => ({
         ...prev,
         comments: prev.comments.map(c => {
-          const r = results.find(x => x.id === c.studentId)
-          return r ? { ...c, polished: r.polished } : c
+          const idx = targets.findIndex(t => t.id === c.studentId)
+          return idx >= 0 && polishedList[idx] ? { ...c, polished: polishedList[idx] } : c
         }),
       }))
       setError(null)
@@ -176,10 +177,14 @@ export default function SessionComposer(
 
   return (
     <div className="page">
-      <button className="btn btn-ghost btn-sm" onClick={onDone} style={{ marginBottom: 12 }}>← Quay lại</button>
-      <h1 style={{ marginBottom: 4 }}>Soạn nội dung</h1>
-      <div className="text-muted" style={{ marginBottom: 20 }}>
-        {cls.code} · {formatSessionDate(session.dateTime) || 'buổi học'}
+      <div className="page-header">
+        <button className="btn btn-ghost btn-sm back-btn" onClick={onDone}><ArrowLeftIcon /> Quay lại</button>
+        <h1>Soạn nội dung</h1>
+        <div className="page-subtitle">
+          <span className="code-chip">{cls.code}</span>
+          {sessionNum > 0 && <span className="text-muted">Buổi #{sessionNum}</span>}
+          <span className="text-muted">· {formatSessionDate(session.dateTime) || 'buổi học'}</span>
+        </div>
       </div>
       {error && <p className="alert alert-error">{error}</p>}
 

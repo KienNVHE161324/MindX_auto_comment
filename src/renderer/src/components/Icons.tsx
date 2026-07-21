@@ -26,6 +26,16 @@ export function TrashIcon({ size = 16 }: IconProps): JSX.Element {
   )
 }
 
+/** Icon mũi tên trái (Quay lại). */
+export function ArrowLeftIcon({ size = 16 }: IconProps): JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
+
 /** Icon sao chép (Sao chép buổi trước). */
 export function CopyIcon({ size = 15 }: IconProps): JSX.Element {
   return (

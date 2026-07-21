@@ -103,6 +103,56 @@ export function rewriteComment(
   return callGemini(apiKey, [{ text: prompt }], fetchFn)
 }
 
+/**
+ * Viết lại nhận xét cho NHIỀU học sinh trong 1 request (tiết kiệm token: chỉ dẫn gửi 1 lần).
+ * Trả về mảng cùng độ dài & thứ tự với `items`; HS nào Gemini bỏ sót thì giữ nguyên nhận xét thô.
+ */
+export async function rewriteCommentsBatch(
+  apiKey: string,
+  items: { name: string; raw: string }[],
+  styleHint: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<string[]> {
+  if (items.length === 0) return []
+
+  const list = items.map((it, i) => `${i + 1}. ${it.name} — ${it.raw}`).join('\n')
+  const prompt =
+    'Bạn là trợ lý giúp giáo viên viết lại nhận xét học sinh cho khách quan, đúng mực.\n' +
+    `Văn phong yêu cầu: ${styleHint}\n` +
+    'Với MỖI học sinh dưới đây, viết lại nhận xét: giữ đúng ý gốc, KHÔNG thêm thông tin bịa, độ dài 1-2 câu.\n' +
+    'CHỈ trả về một mảng JSON hợp lệ, mỗi phần tử dạng {"i": <số thứ tự>, "text": "<nhận xét đã viết lại>"}, ' +
+    'đúng thứ tự, KHÔNG kèm giải thích, KHÔNG bọc trong ```.\n' +
+    'Danh sách (mỗi dòng: "số. Tên — nhận xét thô"):\n' +
+    '---\n' +
+    list +
+    '\n---'
+
+  const reply = await callGemini(apiKey, [{ text: prompt }], fetchFn)
+  const parsed = parseBatchReply(reply)
+
+  // Ghép theo chỉ số i (1-based). Thiếu → giữ nguyên raw.
+  return items.map((it, idx) => {
+    const found = parsed.find(p => p.i === idx + 1)
+    return found?.text?.trim() || it.raw
+  })
+}
+
+function parseBatchReply(reply: string): { i: number; text: string }[] {
+  // Gỡ rào ```json ... ``` nếu model lỡ bọc.
+  const cleaned = reply.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  try {
+    const arr = JSON.parse(cleaned) as unknown
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((x): x is { i: number; text: string } =>
+          typeof x === 'object' && x !== null && typeof (x as { i?: unknown }).i === 'number',
+        )
+        .map(x => ({ i: x.i, text: String((x as { text?: unknown }).text ?? '') }))
+    }
+  } catch { /* rơi xuống fallback */ }
+  return []
+}
+
 export async function validateGeminiApiKey(
   apiKey: string,
   fetchFn: typeof fetch = fetch,

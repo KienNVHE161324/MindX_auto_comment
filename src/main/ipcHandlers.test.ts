@@ -97,6 +97,7 @@ describe('createIpcHandlers — content & gemini', () => {
       getContentRepository: vi.fn(async () => contentRepo),
       extractPdf: vi.fn(async () => 'Nội dung PDF'),
       rewrite: vi.fn(async () => 'Nhận xét đã sửa'),
+      rewriteBatch: vi.fn(async () => ['Nhận xét đã sửa']),
     }
     return { base, contentRepo }
   }
@@ -133,7 +134,7 @@ describe('createIpcHandlers — LMS automation', () => {
       configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
       validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
       getRepository: vi.fn(), getContentRepository: vi.fn(),
-      extractPdf: vi.fn(), rewrite: vi.fn(),
+      extractPdf: vi.fn(), rewrite: vi.fn(), rewriteBatch: vi.fn(),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
       lmsSyncAll: vi.fn(async () => ({ newClasses: [], contentResults: [], skippedClasses: [] })),

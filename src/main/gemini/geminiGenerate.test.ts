@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { extractLessonContent, rewriteComment } from './geminiClient'
+import { extractLessonContent, rewriteComment, rewriteCommentsBatch } from './geminiClient'
 
 function jsonFetch(body: unknown, status = 200): typeof fetch {
   return vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch
@@ -42,6 +42,48 @@ describe('rewriteComment', () => {
     expect(prompt).toContain('An')
     expect(prompt).toContain('ngoan')
     expect(prompt).toContain('nghiêm túc')
+  })
+})
+
+describe('rewriteCommentsBatch (gộp 1 request)', () => {
+  it('gửi đúng 1 request cho nhiều HS và ghép kết quả theo thứ tự', async () => {
+    const reply = JSON.stringify([
+      { i: 1, text: 'Em An tiến bộ.' },
+      { i: 2, text: 'Em Bình tích cực.' },
+    ])
+    const fetchFn = jsonFetch(okReply(reply))
+    const out = await rewriteCommentsBatch(
+      'k',
+      [{ name: 'An', raw: 'ngoan' }, { name: 'Bình', raw: 'ok' }],
+      'thân thiện',
+      fetchFn,
+    )
+    expect(out).toEqual(['Em An tiến bộ.', 'Em Bình tích cực.'])
+    expect((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1)
+  })
+
+  it('bỏ rào ```json và vẫn parse được', async () => {
+    const reply = '```json\n[{"i":1,"text":"Em An tốt."}]\n```'
+    const out = await rewriteCommentsBatch('k', [{ name: 'An', raw: 'ngoan' }], 'x', jsonFetch(okReply(reply)))
+    expect(out).toEqual(['Em An tốt.'])
+  })
+
+  it('HS bị Gemini bỏ sót -> giữ nguyên nhận xét thô', async () => {
+    const reply = JSON.stringify([{ i: 1, text: 'Em An tốt.' }]) // thiếu i=2
+    const out = await rewriteCommentsBatch(
+      'k',
+      [{ name: 'An', raw: 'ngoan' }, { name: 'Bình', raw: 'nghịch' }],
+      'x',
+      jsonFetch(okReply(reply)),
+    )
+    expect(out).toEqual(['Em An tốt.', 'nghịch'])
+  })
+
+  it('mảng rỗng -> không gọi mạng', async () => {
+    const fetchFn = jsonFetch(okReply('[]'))
+    const out = await rewriteCommentsBatch('k', [], 'x', fetchFn)
+    expect(out).toEqual([])
+    expect((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0)
   })
 })
 

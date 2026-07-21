@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { SchoolClass } from '../../../shared/types'
 import { newId } from '../../../shared/id'
+import { ArrowLeftIcon } from '../components/Icons'
 
 function splitDateTime(iso: string): { date: string; hour: string } {
   const m = iso.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})/)
@@ -56,8 +57,10 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
 
   return (
     <div className="page">
-      <button className="btn btn-ghost btn-sm" onClick={onDone} style={{ marginBottom: 12 }}>← Quay lại</button>
-      <h1 style={{ marginBottom: 20 }}>Soạn lớp</h1>
+      <div className="page-header">
+        <button className="btn btn-ghost btn-sm back-btn" onClick={onDone}><ArrowLeftIcon /> Quay lại</button>
+        <h1>Soạn lớp</h1>
+      </div>
 
       <div className="section">
         <div className="field">

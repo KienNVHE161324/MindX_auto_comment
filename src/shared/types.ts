@@ -148,6 +148,7 @@ export const IPC = {
   saveContent: 'content:save',
   extractLessonFromPdf: 'gemini:extractPdf',
   rewriteComment: 'gemini:rewrite',
+  rewriteCommentsBatch: 'gemini:rewriteBatch',
   lmsOpenBrowser: 'lms:openBrowser',
   lmsPostSession: 'lms:postSession',
   lmsSyncAll: 'lms:syncAll',
@@ -166,6 +167,8 @@ export interface AppApi {
   saveContent(content: SessionContent): Promise<void>
   extractLessonFromPdf(): Promise<string>
   rewriteComment(studentName: string, raw: string): Promise<string>
+  /** Viết lại nhận xét cho nhiều HS trong 1 request. Trả về mảng cùng thứ tự với đầu vào. */
+  rewriteCommentsBatch(items: { name: string; raw: string }[]): Promise<string[]>
   lmsOpenBrowser(): Promise<{ loggedIn: boolean }>
   lmsPostSession(params: LmsPostParams): Promise<LmsPostResult>
   lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>

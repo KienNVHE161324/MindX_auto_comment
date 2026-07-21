@@ -14,6 +14,7 @@ const api: AppApi = {
   saveContent: (content) => ipcRenderer.invoke(IPC.saveContent, content),
   extractLessonFromPdf: () => ipcRenderer.invoke(IPC.extractLessonFromPdf),
   rewriteComment: (studentName, raw) => ipcRenderer.invoke(IPC.rewriteComment, studentName, raw),
+  rewriteCommentsBatch: (items) => ipcRenderer.invoke(IPC.rewriteCommentsBatch, items),
   lmsOpenBrowser: () => ipcRenderer.invoke(IPC.lmsOpenBrowser),
   lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
   lmsSyncAll: (params) => ipcRenderer.invoke(IPC.lmsSyncAll, params),
