@@ -249,7 +249,12 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                 <hr className="divider" />
                 <div className="text-muted" style={{ fontSize: 12, marginBottom: 8, fontWeight: 550 }}>Nội dung theo buổi</div>
                 <div className="stack" style={{ gap: 6 }}>
-                  {c.sessions.map(ss => {
+                  {(() => {
+                    // Đánh số buổi theo thứ tự thời gian (#1 = buổi sớm nhất)
+                    const orderedIds = [...c.sessions]
+                      .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime())
+                      .map(s => s.id)
+                    return c.sessions.map(ss => {
                     const content = sessionContents.get(ss.id) ?? null
                     const status = getSessionContentStatus(content)
                     const cs = CONTENT_STATUS_STYLE[status]
@@ -257,11 +262,13 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                     const prevContent = prev ? sessionContents.get(prev.id) : undefined
                     const canCopy = status === 'chưa có nội dung' && !!prevContent
                     const isPast = new Date(ss.dateTime) < new Date()
+                    const num = orderedIds.indexOf(ss.id) + 1
                     const rowClass = isPast
                       ? (status === 'đã nhận xét' ? 'session-row is-past-done' : 'session-row is-past-todo')
                       : 'session-row'
                     return (
                       <div key={ss.id} className={rowClass}>
+                        <span className="session-num">#{num}</span>
                         <span className="session-date">{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>
                         <span className="badge" style={{ background: cs.background, color: cs.color }}>{status}</span>
                         <button
@@ -282,7 +289,8 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                         )}
                       </div>
                     )
-                  })}
+                    })
+                  })()}
                 </div>
               </>
             )}

@@ -157,6 +157,7 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 .session-row.is-past-done { border-left-color: var(--success); background: #f4faf5; }
 .session-row.is-past-todo { border-left-color: var(--warning); background: #fffaf3; }
+.session-num { font-size: 12px; font-weight: 700; color: var(--text-faint); min-width: 30px; }
 .session-date { font-size: 13px; min-width: 132px; }
 
 /* ─── Progress (nhỏ, gắn trên dòng meta) ─────────────────────────────────── */
