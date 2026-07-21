@@ -9,35 +9,61 @@ export interface GeminiPart {
   inline_data?: { mime_type: string; data: string }
 }
 
+// Các mã lỗi tạm thời (model quá tải / rate limit / lỗi máy chủ) — nên thử lại.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
+const MAX_RETRIES = 3
+
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
+
 async function callGemini(
   apiKey: string,
   parts: GeminiPart[],
   fetchFn: typeof fetch = fetch,
+  baseDelayMs = 600,
 ): Promise<string> {
-  const res = await fetchFn(`${GENERATE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }] }),
-  })
-  if (!res.ok) {
+  let lastError = 'Không rõ lỗi'
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetchFn(`${GENERATE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts }] }),
+    })
+
+    if (res.ok) {
+      const data = (await res.json()) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[]
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+      if (typeof text !== 'string') {
+        throw new Error('Gemini không trả về nội dung.')
+      }
+      return text.trim()
+    }
+
     let detail = ''
     try {
       const errBody = (await res.json()) as { error?: { message?: string } }
       if (errBody.error?.message) detail = ` — ${errBody.error.message}`
     } catch { /* bỏ qua nếu body không phải JSON */ }
+
+    // Còn lượt thử và lỗi thuộc loại tạm thời → chờ (exponential backoff) rồi thử lại.
+    if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES) {
+      lastError = `HTTP ${res.status}${detail}`
+      await sleep(baseDelayMs * 2 ** attempt)
+      continue
+    }
+
     if (res.status === 429) {
       throw new Error(`Gemini 429 (quota/rate limit)${detail}`)
     }
+    if (res.status === 503) {
+      throw new Error(`Gemini đang quá tải (503) — đã thử lại ${MAX_RETRIES} lần vẫn lỗi. Thử lại sau ít phút.${detail}`)
+    }
     throw new Error(`Gemini lỗi HTTP ${res.status}${detail}`)
   }
-  const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[]
-  }
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (typeof text !== 'string') {
-    throw new Error('Gemini không trả về nội dung.')
-  }
-  return text.trim()
+
+  throw new Error(`Gemini lỗi sau ${MAX_RETRIES} lần thử: ${lastError}`)
 }
 
 export function extractLessonContent(

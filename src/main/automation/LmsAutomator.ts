@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext, Page } from 'playwright'
+import { chromium, Browser, BrowserContext, Page, Locator } from 'playwright'
 import * as http from 'http'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -384,6 +384,16 @@ export class LmsAutomator {
         const popup = page.locator('[role="dialog"], .modal, [class*="popup"], [class*="modal"]').last()
         await popup.waitFor({ state: 'visible', timeout: 8000 })
 
+        // Nếu HS đã có nhận xét trên LMS → KHÔNG ghi đè, bỏ qua.
+        const existing = await this.readPopupExistingComment(popup)
+        if (existing) {
+          await page.keyboard.press('Escape').catch(() => {})
+          await popup.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+          await page.waitForTimeout(200)
+          skipped.push(`${studentName} (đã có nhận xét, không ghi đè)`)
+          continue
+        }
+
         const textarea = popup.locator('textarea, [contenteditable="true"], input[type="text"]').first()
         await textarea.click()
         await textarea.fill(commentData.text)
@@ -403,6 +413,26 @@ export class LmsAutomator {
     }
 
     return { posted, skipped }
+  }
+
+  /**
+   * Đọc nhận xét đang có trong popup (nếu có). Trả về '' nếu trống/placeholder.
+   * Ưu tiên editor thật của LMS (div.jss2722), fallback textarea/contenteditable chung.
+   */
+  private async readPopupExistingComment(popup: Locator): Promise<string> {
+    const el = popup.locator('div.jss2722, [contenteditable="true"], textarea, input[type="text"]').first()
+    if ((await el.count()) === 0) return ''
+
+    const isPlaceholder = await el
+      .evaluate(e => e.className.includes('place-holder'))
+      .catch(() => false)
+    if (isPlaceholder) return ''
+
+    const viaValue = await el.inputValue().catch(() => '')
+    if (viaValue.trim()) return viaValue.trim()
+
+    const viaText = ((await el.textContent().catch(() => '')) ?? '').trim()
+    return viaText
   }
 
   // ─── Auto-login ────────────────────────────────────────────────────────────

@@ -160,6 +160,29 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .session-num { font-size: 12px; font-weight: 700; color: var(--text-faint); min-width: 30px; }
 .session-date { font-size: 13px; min-width: 132px; }
 
+/* ─── Student comment items (màn Soạn nội dung) ──────────────────────────── */
+.student-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: var(--surface);
+}
+.student-item.absent { background: #f8f9fb; opacity: .75; }
+.student-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.student-name { font-weight: 600; font-size: 14px; }
+.tag-ai { font-size: 11px; color: var(--primary); background: var(--primary-soft); padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+
+/* Thanh hành động dưới cùng */
+.action-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+
 /* ─── Progress (nhỏ, gắn trên dòng meta) ─────────────────────────────────── */
 .progress-mini {
   display: inline-block;

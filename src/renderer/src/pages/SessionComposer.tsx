@@ -211,23 +211,24 @@ export default function SessionComposer(
           </div>
         </div>
         {cls.students.length === 0 && <p className="text-muted">Lớp chưa có học sinh.</p>}
-        <div className="stack" style={{ gap: 14 }}>
+        <div className="stack" style={{ gap: 10 }}>
           {cls.students.map(s => {
             const cm = commentFor(s.id)
             const absent = isAbsent(s.id)
             return (
-              <div key={s.id}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <strong>
+              <div key={s.id} className={`student-item${absent ? ' absent' : ''}`}>
+                <div className="student-head">
+                  <span className="student-name">
                     {s.name}
                     {absent && <span className="badge" style={{ background: '#f2f4f7', color: '#667085', marginLeft: 8 }}>nghỉ</span>}
-                  </strong>
-                  {cm.polished && <span className="text-muted" style={{ fontSize: 12 }}>(AI đã sửa)</span>}
+                  </span>
+                  {cm.polished && <span className="tag-ai">AI đã sửa</span>}
                 </div>
                 <textarea
                   className="textarea"
                   aria-label={`Nhận xét ${s.name}`}
                   rows={2}
+                  placeholder={absent ? 'Học sinh nghỉ — không gửi nhận xét' : 'Nhập nhận xét…'}
                   value={cm.polished || cm.raw}
                   onChange={e => {
                     if (cm.polished) {
@@ -257,8 +258,8 @@ export default function SessionComposer(
         </div>
       </section>
 
-      <div className="btn-row" style={{ marginBottom: 16 }}>
-        <button className="btn" onClick={showPreview}>Xem trước</button>
+      <div className="action-bar">
+        <button className="btn" onClick={showPreview}>Xem trước Zalo</button>
         <button className="btn btn-primary" onClick={save}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
