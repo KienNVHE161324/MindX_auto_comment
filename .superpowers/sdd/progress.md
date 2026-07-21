@@ -53,3 +53,30 @@ Người dùng báo: đồng bộ về vẫn 14:00 dù buổi thật là 08:00. 
 2. **Sai DOM**: `scrapeSessions` chạy trong tab "Schedule" của **drawer**; DOM người dùng gửi (có ô `hh:mm`) là trang **"Cài đặt lịch"** đầy đủ. Nếu tab Schedule trong drawer KHÔNG có ô `hh:mm`, code lấy không ra giờ → fallback 14:00.
 
 **Cần để xử lý dứt điểm:** HTML/console-log thật của tab "Schedule" trong drawer chi tiết lớp (không phải trang Cài đặt lịch), hoặc quyết định đổi luồng scrape sang trang "Cài đặt lịch". Không tự đoán selector.
+
+**CẬP NHẬT (2026-07-21):** Đã kiểm chứng bằng file `lms-detail-debug.html` thật (userData/lms-browser) — DOM drawer Schedule CÓ ô `hh:mm` với giá trị đúng (08:00/10:00). Chạy logic climb bằng jsdom trả về đúng 08:00 cho cả 14 buổi → **code đúng**. Nguyên nhân người dùng vẫn thấy 14:00: **main-process không hot-reload** khi `npm run dev` đang chạy → cần tắt hẳn app và chạy lại. (Chưa xác nhận người dùng đã restart chưa.)
+
+## Milestone 8 — Đánh số buổi + chặn buổi đặc biệt + tối ưu Gemini + đổi model (2026-07-21)
+
+- [x] Đánh số buổi #1..#N theo thứ tự thời gian trong danh sách buổi (ClassesPage). Commit 9052b9c.
+- [x] Chặn gửi LMS buổi #4/#9 (cơ chế đặc biệt, làm phase sau): `shared/sessionContent` thêm `getSessionNumber`/`isLmsBlockedSession`; SessionComposer khóa nút + báo; autoSend không tự gửi LMS 2 buổi này (vẫn gửi Zalo). Commit 430c033.
+- [x] Gộp "Sửa bằng AI" thành 1 nút cho cả lớp (bỏ nút từng HS). Commit 430c033.
+- [x] Giữ tài khoản LMS: tự lưu email/mật khẩu khi rời ô (onBlur) + nút Hiện/Ẩn mật khẩu. Commit 430c033. (Đã phát hiện config cũ `lmsEmail=null` do trước đây chỉ lưu khi bấm "Lưu".)
+- [x] Gemini retry khi model quá tải (429/500/502/503/504, backoff). Commit 37aac14.
+- [x] LMS `processComments`: nếu HS đã có nhận xét trên LMS → bỏ qua, không ghi đè (`readPopupExistingComment`). Commit 37aac14. **Chưa verify DOM popup thật.**
+- [x] Làm đẹp màn Soạn nội dung: card từng HS, tag "AI đã sửa", action bar, header có icon Quay lại + chip mã lớp + số buổi. Commit 37aac14, 18bddbd.
+- [x] **Tối ưu token**: `rewriteCommentsBatch` — gộp cả lớp vào 1 request Gemini (chỉ dẫn gửi 1 lần), trả JSON theo index; HS bỏ sót giữ raw. IPC `gemini:rewriteBatch` xuyên main/preload. Commit 18bddbd.
+- [x] **Đổi model Gemini** trong Cấu hình (`AppConfig.geminiModel`, `setGeminiModel`) — để đổi khi 1 model hết quota miễn phí. Commit (session này).
+
+Tổng: **162 tests xanh**, `npm run typecheck` sạch, `npm run build` OK.
+
+### ⚠️ Đang gặp: quota Gemini free-tier
+`gemini:rewriteBatch` báo **429 — Quota exceeded (free_tier, limit 20/ngày, model gemini-3.5-flash)**. Batch đã giảm số request (1 thay vì N/lớp) nhưng vẫn đụng hạn mức ngày. Giải pháp cho người dùng:
+1. Dán **API key khác** (Google account khác) — quota theo key.
+2. **Đổi model** trong Cấu hình (mỗi model có quota riêng): gemini-2.5-flash / gemini-2.0-flash / gemini-flash-lite-latest.
+Cần restart app (main-process) sau khi đổi.
+
+### Việc còn treo cho session sau
+- Verify thủ công (cần restart app): giờ buổi lấy đúng từ LMS; LMS skip-nếu-đã-có-comment (cần HTML popup thật nếu sai); luồng gửi Zalo tự động thật (hiện ghi file Documents).
+- Cơ chế đặc biệt buổi #4/#9 (spec chưa có) — hiện mới chỉ CHẶN gửi LMS.
+- Automation Zalo Desktop thật (hiện là file .txt thay thế).

@@ -4,11 +4,15 @@ export interface AppConfig {
   storageBackend: StorageBackend
   localFolderPath: string | null
   geminiApiKey: string | null
+  /** Model Gemini dùng để sinh nội dung (đổi khi hết quota 1 model). */
+  geminiModel: string
   zaloMessageTemplate: string
   commentStyleHint: string
   lmsEmail: string | null
   lmsPassword: string | null
 }
+
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest'
 
 export interface GeminiValidationResult {
   valid: boolean
@@ -79,6 +83,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   storageBackend: 'local',
   localFolderPath: null,
   geminiApiKey: null,
+  geminiModel: DEFAULT_GEMINI_MODEL,
   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
   commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
   lmsEmail: null,

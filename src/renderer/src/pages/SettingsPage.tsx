@@ -96,6 +96,27 @@ export default function SettingsPage(): JSX.Element {
             </div>
           )}
         </div>
+        <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
+          <label htmlFor="gemini-model">Model Gemini</label>
+          <input
+            id="gemini-model"
+            className="input"
+            style={{ maxWidth: 320 }}
+            list="gemini-model-options"
+            value={config.geminiModel}
+            onChange={e => set('geminiModel', e.target.value)}
+            placeholder="gemini-flash-latest"
+          />
+          <datalist id="gemini-model-options">
+            <option value="gemini-flash-latest" />
+            <option value="gemini-2.5-flash" />
+            <option value="gemini-2.0-flash" />
+            <option value="gemini-flash-lite-latest" />
+          </datalist>
+          <p className="field-hint">
+            Đổi model khi 1 model hết quota miễn phí (mỗi model có hạn mức riêng). Nhớ bấm "Lưu".
+          </p>
+        </div>
       </section>
 
       <section className="section">

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { ConfigStore } from './config/configStore'
-import { validateGeminiApiKey, extractLessonContent, rewriteComment, rewriteCommentsBatch } from './gemini/geminiClient'
+import { validateGeminiApiKey, extractLessonContent, rewriteComment, rewriteCommentsBatch, setGeminiModel } from './gemini/geminiClient'
 import { createIpcHandlers } from './ipcHandlers'
 import { createStorageProvider } from './storage'
 import { ClassRepository } from './classes/ClassRepository'
@@ -72,6 +72,7 @@ function registerIpc(): void {
   const requireApiKey = async (): Promise<string> => {
     const cfg = await configStore.load()
     if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
     return cfg.geminiApiKey
   }
   const extractPdf = async (): Promise<string> => {
@@ -89,11 +90,13 @@ function registerIpc(): void {
   const rewrite = async (studentName: string, raw: string): Promise<string> => {
     const cfg = await configStore.load()
     if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
     return rewriteComment(cfg.geminiApiKey, studentName, raw, cfg.commentStyleHint)
   }
   const rewriteBatch = async (items: { name: string; raw: string }[]): Promise<string[]> => {
     const cfg = await configStore.load()
     if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
     return rewriteCommentsBatch(cfg.geminiApiKey, items, cfg.commentStyleHint)
   }
   const handlers = createIpcHandlers({

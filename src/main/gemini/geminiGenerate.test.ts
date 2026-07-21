@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { extractLessonContent, rewriteComment, rewriteCommentsBatch } from './geminiClient'
+import { extractLessonContent, rewriteComment, rewriteCommentsBatch, setGeminiModel } from './geminiClient'
+import { DEFAULT_GEMINI_MODEL } from '../../shared/types'
 
 function jsonFetch(body: unknown, status = 200): typeof fetch {
   return vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch
@@ -42,6 +43,28 @@ describe('rewriteComment', () => {
     expect(prompt).toContain('An')
     expect(prompt).toContain('ngoan')
     expect(prompt).toContain('nghiêm túc')
+  })
+})
+
+describe('setGeminiModel', () => {
+  it('đổi model -> endpoint dùng model mới, rồi khôi phục mặc định', async () => {
+    try {
+      setGeminiModel('gemini-2.0-flash')
+      const fetchFn = jsonFetch(okReply('x'))
+      await rewriteComment('k', 'An', 'ngoan', 'x', fetchFn)
+      const url = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+      expect(url).toContain('gemini-2.0-flash:generateContent')
+    } finally {
+      setGeminiModel(DEFAULT_GEMINI_MODEL)
+    }
+  })
+
+  it('giá trị rỗng -> giữ nguyên model hiện tại', async () => {
+    setGeminiModel('')
+    const fetchFn = jsonFetch(okReply('x'))
+    await rewriteComment('k', 'An', 'ngoan', 'x', fetchFn)
+    const url = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    expect(url).toContain(`${DEFAULT_GEMINI_MODEL}:generateContent`)
   })
 })
 

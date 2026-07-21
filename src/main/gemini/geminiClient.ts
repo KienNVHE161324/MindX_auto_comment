@@ -1,8 +1,15 @@
-import { GeminiValidationResult } from '../../shared/types'
+import { GeminiValidationResult, DEFAULT_GEMINI_MODEL } from '../../shared/types'
 
 const MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
-const GEMINI_MODEL = 'gemini-flash-latest'
-const GENERATE_ENDPOINT = `${MODELS_ENDPOINT}/${GEMINI_MODEL}:generateContent`
+
+// Model hiện hành — main process gọi setGeminiModel() theo config để đổi khi hết quota.
+let activeModel = DEFAULT_GEMINI_MODEL
+export function setGeminiModel(model: string | null | undefined): void {
+  if (model && model.trim()) activeModel = model.trim()
+}
+function generateEndpoint(): string {
+  return `${MODELS_ENDPOINT}/${activeModel}:generateContent`
+}
 
 export interface GeminiPart {
   text?: string
@@ -24,7 +31,7 @@ async function callGemini(
   let lastError = 'Không rõ lỗi'
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetchFn(`${GENERATE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    const res = await fetchFn(`${generateEndpoint()}?key=${encodeURIComponent(apiKey)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts }] }),
