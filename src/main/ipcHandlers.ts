@@ -75,7 +75,11 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
       const repository = await deps.getContentRepository()
       const stored = await repository.get(request.content.sessionId)
       const current = mergeStoredMetadata(request.content, stored)
-      if (current.postedToLms) {
+      const handledBefore = new Set([
+        ...(current.lmsPostedStudentIds ?? []),
+        ...(current.absentStudentIds ?? []),
+      ])
+      if (request.students.every(student => handledBefore.has(student.id))) {
         return {
           postResult: { posted: [], skipped: [], absentStudentNames: [] },
           content: current,
@@ -88,14 +92,20 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         current.absentStudentIds ?? [],
         postResult.absentStudentNames,
       )
-      const didPost = !postResult.error && postResult.posted.length > 0
-      const absenceChanged = absentStudentIds.length !== (current.absentStudentIds ?? []).length
-      if (!didPost && !absenceChanged) return { postResult, content: current }
+      const assessment = assessLmsDelivery(request.students, postResult, {
+        postedStudentIds: current.lmsPostedStudentIds,
+        absentStudentIds,
+      })
+      const evidenceChanged =
+        assessment.absentStudentIds.length !== (current.absentStudentIds ?? []).length
+        || assessment.postedStudentIds.length !== (current.lmsPostedStudentIds ?? []).length
+      if (!evidenceChanged) return { postResult, content: current }
 
       const updated: SessionContent = {
         ...current,
-        absentStudentIds,
-        ...(didPost ? { postedToLms: true } : {}),
+        absentStudentIds: assessment.absentStudentIds,
+        lmsPostedStudentIds: assessment.postedStudentIds,
+        ...(assessment.complete ? { postedToLms: true } : {}),
       }
       await repository.save(updated)
       const persisted = await repository.get(updated.sessionId)
@@ -138,9 +148,14 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
           })
           .filter(comment => comment.text.trim() !== ''),
       }))
+      const confirmedAbsentIds = mergeAbsentStudentNames(
+        cls.students,
+        content.absentStudentIds ?? [],
+        postResult.absentStudentNames,
+      )
       const assessment = assessLmsDelivery(cls.students, postResult, {
         postedStudentIds: content.lmsPostedStudentIds,
-        absentStudentIds: content.absentStudentIds,
+        absentStudentIds: confirmedAbsentIds,
       })
       const lmsPersisted = await contentRepository.updateMetadata(
         request.sessionId,

@@ -177,6 +177,7 @@ describe('AutoSendScheduler.tick', () => {
     const initial = makeContent()
     const completed = makeContent({
       postedToLms: true,
+      lmsPostedStudentIds: ['s1'],
       zaloSentAt: '2026-07-17T18:00:00.000Z',
     })
     const getContent = vi.fn()
@@ -207,7 +208,11 @@ describe('AutoSendScheduler.tick', () => {
     const exclusiveBlocked = new Promise<void>(resolve => { releaseExclusive = resolve })
     const zaloSentAt = '2026-07-17T18:00:00.000Z'
     const initial = makeContent({ zaloSentAt })
-    const completed = makeContent({ postedToLms: true, zaloSentAt })
+    const completed = makeContent({
+      postedToLms: true,
+      lmsPostedStudentIds: ['s1'],
+      zaloSentAt,
+    })
     const getContent = vi.fn()
       .mockResolvedValueOnce(initial)
       .mockResolvedValue(completed)
@@ -271,6 +276,7 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       postedToLms: true,
       absentStudentIds: [],
+      lmsPostedStudentIds: ['s1'],
     })
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       zaloSentAt: now.toISOString(),
@@ -300,7 +306,10 @@ describe('AutoSendScheduler.tick', () => {
   it('đã gửi LMS rồi -> chỉ gửi Zalo, không gọi lại lmsPostSession', async () => {
     const deps = makeDeps({
       getClasses: vi.fn(async () => [makeCls()]),
-      getContent: vi.fn(async () => makeContent({ postedToLms: true })),
+      getContent: vi.fn(async () => makeContent({
+        postedToLms: true,
+        lmsPostedStudentIds: ['s1'],
+      })),
     })
     await new AutoSendScheduler(deps).tick()
     expect(deps.lmsPostSession).not.toHaveBeenCalled()
@@ -310,7 +319,11 @@ describe('AutoSendScheduler.tick', () => {
   it('đã gửi cả 2 kênh -> không gửi lại, không lưu', async () => {
     const deps = makeDeps({
       getClasses: vi.fn(async () => [makeCls()]),
-      getContent: vi.fn(async () => makeContent({ postedToLms: true, zaloSentAt: '2026-07-17T18:00:00' })),
+      getContent: vi.fn(async () => makeContent({
+        postedToLms: true,
+        lmsPostedStudentIds: ['s1'],
+        zaloSentAt: '2026-07-17T18:00:00',
+      })),
     })
     await new AutoSendScheduler(deps).tick()
     expect(deps.lmsPostSession).not.toHaveBeenCalled()
@@ -327,11 +340,11 @@ describe('AutoSendScheduler.tick', () => {
       })),
     })
     await new AutoSendScheduler(deps).tick()
-    expect(deps.sendZaloMessage).toHaveBeenCalled()
-    expect(deps.updateContentMetadata).toHaveBeenCalledTimes(1)
-    expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
-      zaloSentAt: now.toISOString(),
-    })
+    expect(deps.sendZaloMessage).not.toHaveBeenCalled()
+    expect(deps.updateContentMetadata).not.toHaveBeenCalledWith(
+      'ss1',
+      expect.objectContaining({ zaloSentAt: expect.any(String) }),
+    )
   })
 
   it('cùng tick: lưu HS nghỉ từ LMS trước khi dựng tin Zalo, kể cả chưa post được nhận xét nào', async () => {
@@ -365,16 +378,12 @@ describe('AutoSendScheduler.tick', () => {
 
     await new AutoSendScheduler(deps).tick()
 
-    expect(deps.sendZaloMessage).toHaveBeenCalledWith(
-      {
-        searchTerm: 'Dương',
-        message: expect.stringContaining('Nguyễn Sách Sâm: nghỉ'),
-      },
-    )
+    expect(deps.sendZaloMessage).not.toHaveBeenCalled()
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       absentStudentIds: ['s2'],
+      lmsPostedStudentIds: [],
     })
-    expect(events).toEqual(['save:lms', 'zalo', 'save:zalo'])
+    expect(events).toEqual(['save:lms'])
   })
 
   it('skip kỹ thuật không được suy diễn thành HS nghỉ', async () => {
@@ -398,12 +407,10 @@ describe('AutoSendScheduler.tick', () => {
 
     await new AutoSendScheduler(deps).tick()
 
-    const writeMock = deps.sendZaloMessage as unknown as ReturnType<typeof vi.fn>
-    expect(writeMock.mock.calls[0][0].message).toContain('Bình: Chăm')
-    expect(writeMock.mock.calls[0][0].message).not.toContain('Bình: nghỉ')
+    expect(deps.sendZaloMessage).not.toHaveBeenCalled()
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
-      postedToLms: true,
       absentStudentIds: [],
+      lmsPostedStudentIds: ['s1'],
     })
   })
 
@@ -437,7 +444,10 @@ describe('AutoSendScheduler — Zalo Web outcomes', () => {
   it('keeps Zalo pending when login is required', async () => {
     const deps = makeDeps({
       getClasses: vi.fn(async () => [makeCls()]),
-      getContent: vi.fn(async () => makeContent({ postedToLms: true })),
+      getContent: vi.fn(async () => makeContent({
+        postedToLms: true,
+        lmsPostedStudentIds: ['s1'],
+      })),
       sendZaloMessage: vi.fn(async () => ({
         status: 'login-required' as const,
         message: 'Cần đăng nhập Zalo Web rồi gửi lại.',
@@ -459,7 +469,10 @@ describe('AutoSendScheduler — Zalo Web outcomes', () => {
   it('does not retry or mark sent when outgoing verification rejects', async () => {
     const deps = makeDeps({
       getClasses: vi.fn(async () => [makeCls()]),
-      getContent: vi.fn(async () => makeContent({ postedToLms: true })),
+      getContent: vi.fn(async () => makeContent({
+        postedToLms: true,
+        lmsPostedStudentIds: ['s1'],
+      })),
       sendZaloMessage: vi.fn(async () => {
         throw new Error('Zalo không xác nhận được tin nhắn vừa gửi.')
       }),
