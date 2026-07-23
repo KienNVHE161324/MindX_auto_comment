@@ -2,11 +2,14 @@ import {
   AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent,
   LmsPostParams, LmsPostResult, LmsContentTarget, LmsSyncAllResult,
   AutoSendCatchUpItem, AutoSendCatchUpResult,
+  ZaloSendResult, ZaloSendSessionResult,
 } from '../shared/types'
 import { ConfigStore } from './config/configStore'
 import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { mergeAbsentStudentNames } from '../shared/lmsSync'
+import { buildZaloMessage } from '../shared/autoSend'
+import { ZALO_TEST_SEARCH_TERM } from './automation/ZaloWebAutomator'
 
 export interface IpcDeps {
   configStore: ConfigStore
@@ -25,6 +28,8 @@ export interface IpcDeps {
     ) => Promise<T>,
   ): Promise<T>
   lmsSyncAll: (params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }) => Promise<LmsSyncAllResult>
+  sendZaloMessage: (input: { searchTerm: string; message: string }) => Promise<ZaloSendResult>
+  now: () => Date
   getAutoSendCatchUp: () => AutoSendCatchUpItem[]
   runAutoSendCatchUp: () => Promise<AutoSendCatchUpResult[]>
 }
@@ -95,6 +100,52 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
       return { postResult, content: persisted ?? updated }
     }),
     lmsSyncAll: (params) => deps.lmsSyncAll(params),
+    zaloSendSession: async request => {
+      const classRepository = await deps.getRepository()
+      const cls = await classRepository.get(request.classId)
+      if (!cls) throw new Error('Không tìm thấy lớp để gửi Zalo.')
+
+      const session = cls.sessions.find(item => item.id === request.sessionId)
+      if (!session) throw new Error('Không tìm thấy buổi học để gửi Zalo.')
+
+      const contentRepository = await deps.getContentRepository()
+      const content = await contentRepository.get(request.sessionId)
+      if (!content) throw new Error('Buổi học chưa có nội dung để gửi Zalo.')
+      if (content.zaloSentAt) {
+        return {
+          status: 'already-sent',
+          message: 'Buổi này đã gửi Zalo.',
+          content,
+        } satisfies ZaloSendSessionResult
+      }
+
+      const config = await deps.configStore.load()
+      const message = buildZaloMessage(
+        cls,
+        session,
+        content,
+        config.zaloMessageTemplate,
+      )
+      const sendResult = await deps.sendZaloMessage({
+        searchTerm: ZALO_TEST_SEARCH_TERM,
+        message,
+      })
+      if (sendResult.status === 'login-required') {
+        return { ...sendResult, content }
+      }
+
+      const zaloSentAt = deps.now().toISOString()
+      const persisted = await contentRepository.updateMetadata(
+        request.sessionId,
+        { zaloSentAt },
+      )
+      const updated = persisted ?? { ...content, zaloSentAt }
+      return {
+        status: 'sent',
+        message: 'Đã gửi Zalo.',
+        content: updated,
+      }
+    },
     getAutoSendCatchUp: async () => deps.getAutoSendCatchUp(),
     runAutoSendCatchUp: () => deps.runAutoSendCatchUp(),
   }

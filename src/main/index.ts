@@ -9,6 +9,8 @@ import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { LmsAutomator } from './automation/LmsAutomator'
 import { AutoSendScheduler, writeZaloMessageToDocuments } from './automation/AutoSendScheduler'
+import { ZaloWebAutomator } from './automation/ZaloWebAutomator'
+import { WorkflowMutex } from './automation/WorkflowMutex'
 import { IPC } from '../shared/types'
 
 const AUTO_SEND_INTERVAL_MS = 60_000
@@ -32,8 +34,15 @@ function createWindow(): BrowserWindow {
 }
 
 // Singleton automator — browser stays open across IPC calls
+const externalWorkflowMutex = new WorkflowMutex()
 const lmsAutomator = new LmsAutomator(
   join(app.getPath('userData'), 'lms-browser'),
+  undefined,
+  externalWorkflowMutex,
+)
+const zaloAutomator = new ZaloWebAutomator(
+  join(app.getPath('userData'), 'zalo-browser'),
+  { workflowMutex: externalWorkflowMutex },
 )
 
 const configStore = new ConfigStore(app.getPath('userData'))
@@ -119,6 +128,8 @@ function registerIpc(scheduler: AutoSendScheduler): void {
     lmsPostSession: (params) => lmsAutomator.postSession(params),
     runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
     lmsSyncAll: (params) => lmsAutomator.syncAll(params.existingCodes, params.contentTargets),
+    sendZaloMessage: input => zaloAutomator.sendMessage(input),
+    now: () => new Date(),
     getAutoSendCatchUp: () => scheduler.getCatchUpItems(),
     runAutoSendCatchUp: () => scheduler.runCatchUp(),
   })
@@ -143,6 +154,7 @@ function registerIpc(scheduler: AutoSendScheduler): void {
     (_e, request) => handlers.lmsPostSessionAndSave(request),
   )
   ipcMain.handle(IPC.lmsSyncAll, (_e, params) => handlers.lmsSyncAll(params))
+  ipcMain.handle(IPC.zaloSendSession, (_e, request) => handlers.zaloSendSession(request))
   ipcMain.handle(IPC.autoSendGetCatchUp, () => handlers.getAutoSendCatchUp())
   ipcMain.handle(IPC.autoSendRunCatchUp, () => handlers.runAutoSendCatchUp())
 }
@@ -168,5 +180,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  void lmsAutomator.close()
+  void Promise.all([lmsAutomator.close(), zaloAutomator.close()])
 })

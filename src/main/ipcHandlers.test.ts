@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import { createIpcHandlers } from './ipcHandlers'
 import { AutoSendScheduler } from './automation/AutoSendScheduler'
 import { WorkflowMutex } from './automation/WorkflowMutex'
-import { DEFAULT_CONFIG, SchoolClass, SessionContent, LmsPostParams } from '../shared/types'
+import {
+  DEFAULT_CONFIG,
+  SchoolClass,
+  SessionContent,
+  LmsPostParams,
+  ZaloSendResult,
+} from '../shared/types'
 
 function makeDeps() {
   const configStore = {
@@ -298,5 +304,95 @@ describe('createIpcHandlers — LMS automation', () => {
     const res = await api.lmsSyncAll(params)
     expect(res).toEqual({ newClasses: [], contentResults: [], skippedClasses: [] })
     expect(deps.lmsSyncAll).toHaveBeenCalledWith(params)
+  })
+})
+
+describe('createIpcHandlers — Zalo Web', () => {
+  const cls: SchoolClass = {
+    id: 'c1',
+    code: 'A1',
+    name: 'Lớp A1',
+    students: [{ id: 'st1', name: 'An' }],
+    sessions: [{ id: 'ss1', dateTime: '2026-07-23T18:00:00' }],
+  }
+  const content: SessionContent = {
+    id: 'ss1',
+    classId: 'c1',
+    sessionId: 'ss1',
+    lessonContent: 'Bài học',
+    homework: 'Bài tập',
+    comments: [{ studentId: 'st1', raw: 'Ngoan', polished: '' }],
+  }
+
+  function makeZaloDeps(stored: SessionContent = content) {
+    let current = stored
+    const classRepo = { get: vi.fn(async () => cls) }
+    const contentRepo = {
+      get: vi.fn(async () => current),
+      updateMetadata: vi.fn(async (_sessionId: string, patch: Partial<SessionContent>) => {
+        current = { ...current, ...patch }
+        return current
+      }),
+    }
+    const sendZaloMessage = vi.fn(
+      async (): Promise<ZaloSendResult> => ({ status: 'sent' }),
+    )
+    const common = makeDeps()
+    const deps = {
+      ...common,
+      configStore: {
+        ...common.configStore,
+        load: vi.fn(async () => DEFAULT_CONFIG),
+      },
+      getRepository: vi.fn(async () => classRepo),
+      getContentRepository: vi.fn(async () => contentRepo),
+      sendZaloMessage,
+      now: () => new Date('2026-07-23T12:00:00.000Z'),
+    }
+    return { deps, contentRepo, sendZaloMessage }
+  }
+
+  it('reloads current data, sends and persists zaloSentAt only after sent', async () => {
+    const { deps, contentRepo, sendZaloMessage } = makeZaloDeps()
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(sendZaloMessage).toHaveBeenCalledWith({
+      searchTerm: 'Dương',
+      message: expect.stringContaining('Lớp A1'),
+    })
+    expect(contentRepo.updateMetadata).toHaveBeenCalledWith('ss1', {
+      zaloSentAt: '2026-07-23T12:00:00.000Z',
+    })
+    expect(result.status).toBe('sent')
+    expect(result.content.zaloSentAt).toBe('2026-07-23T12:00:00.000Z')
+  })
+
+  it('does not invoke Zalo when latest content is already sent', async () => {
+    const { deps, sendZaloMessage } = makeZaloDeps({
+      ...content,
+      zaloSentAt: '2026-07-23T11:00:00.000Z',
+    })
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(result.status).toBe('already-sent')
+    expect(sendZaloMessage).not.toHaveBeenCalled()
+  })
+
+  it('returns login-required without persisting metadata', async () => {
+    const { deps, contentRepo, sendZaloMessage } = makeZaloDeps()
+    sendZaloMessage.mockResolvedValue({
+      status: 'login-required' as const,
+      message: 'Cần đăng nhập Zalo Web rồi gửi lại.',
+    })
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(result.status).toBe('login-required')
+    expect(contentRepo.updateMetadata).not.toHaveBeenCalled()
   })
 })

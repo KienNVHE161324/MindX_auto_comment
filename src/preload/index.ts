@@ -19,6 +19,7 @@ const api: AppApi = {
   lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
   lmsPostSessionAndSave: (request) => ipcRenderer.invoke(IPC.lmsPostSessionAndSave, request),
   lmsSyncAll: (params) => ipcRenderer.invoke(IPC.lmsSyncAll, params),
+  zaloSendSession: (request) => ipcRenderer.invoke(IPC.zaloSendSession, request),
   getAutoSendCatchUp: () => ipcRenderer.invoke(IPC.autoSendGetCatchUp),
   runAutoSendCatchUp: () => ipcRenderer.invoke(IPC.autoSendRunCatchUp),
 }

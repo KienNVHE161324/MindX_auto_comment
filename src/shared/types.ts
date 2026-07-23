@@ -211,6 +211,7 @@ export const IPC = {
   lmsPostSession: 'lms:postSession',
   lmsPostSessionAndSave: 'lms:postSessionAndSave',
   lmsSyncAll: 'lms:syncAll',
+  zaloSendSession: 'zalo:sendSession',
   autoSendGetCatchUp: 'autoSend:getCatchUp',
   autoSendRunCatchUp: 'autoSend:runCatchUp',
 } as const
@@ -236,6 +237,7 @@ export interface AppApi {
     request: LmsPostSessionAndSaveRequest,
   ): Promise<LmsPostSessionAndSaveResult>
   lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
+  zaloSendSession(request: ZaloSendSessionRequest): Promise<ZaloSendSessionResult>
   getAutoSendCatchUp(): Promise<AutoSendCatchUpItem[]>
   runAutoSendCatchUp(): Promise<AutoSendCatchUpResult[]>
 }
