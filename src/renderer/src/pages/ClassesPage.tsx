@@ -278,15 +278,17 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                         >
                           {status === 'chưa có nội dung' ? 'Soạn nội dung' : 'Xem/Sửa nội dung'}
                         </button>
-                        {canCopy && (
-                          <button
-                            className="btn btn-sm"
-                            aria-label={`Sao chép buổi trước ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
-                            onClick={() => void copyFromPrevious(c, ss)}
-                          >
-                            Sao chép buổi trước
-                          </button>
-                        )}
+                        <span className="session-secondary-action">
+                          {canCopy && (
+                            <button
+                              className="btn btn-sm"
+                              aria-label={`Sao chép buổi trước ${c.code} ${formatSessionDate(ss.dateTime) || ss.id}`}
+                              onClick={() => void copyFromPrevious(c, ss)}
+                            >
+                              Sao chép buổi trước
+                            </button>
+                          )}
+                        </span>
                       </div>
                     )
                     })

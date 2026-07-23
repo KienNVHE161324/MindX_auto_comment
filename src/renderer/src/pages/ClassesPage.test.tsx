@@ -155,6 +155,30 @@ describe('ClassesPage', () => {
     expect(screen.getByText(/đã qua 2\/3 buổi/i)).toBeInTheDocument()
   })
 
+  it('giữ một ô hành động phụ cho mỗi hàng buổi học', async () => {
+    const cls: SchoolClass = {
+      id: 'c4', code: 'D4', name: 'Lớp D4', students: [{ id: 's1', name: 'An' }],
+      sessions: [
+        { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
+        { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
+      ],
+    }
+    stub({
+      listClasses: vi.fn(async () => [cls]),
+      getContent: vi.fn(async (sessionId: string) => sessionId === 'ss1'
+        ? { id: 'ss1', classId: 'c4', sessionId: 'ss1', lessonContent: 'Bài trước', homework: '', comments: [] }
+        : null),
+    })
+    const { container } = render(<ClassesPage />)
+
+    await waitFor(() => expect(screen.getByText('D4')).toBeInTheDocument())
+    const rows = container.querySelectorAll('.session-row')
+    expect(rows).toHaveLength(2)
+    rows.forEach(row => expect(row.querySelectorAll('.session-secondary-action')).toHaveLength(1))
+    expect(rows[0].querySelector('.session-secondary-action button')).toBeNull()
+    expect(rows[1].querySelector('.session-secondary-action button')).toHaveTextContent(/sao chép buổi trước/i)
+  })
+
   it('nút "Sao chép buổi trước" chỉ hiện khi buổi chưa có nội dung và buổi trước đã có; bấm sẽ lưu bản sao', async () => {
     const cls: SchoolClass = {
       id: 'c3', code: 'C3', name: 'Lớp C3', students: [{ id: 's1', name: 'An' }],

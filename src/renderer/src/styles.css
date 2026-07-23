@@ -148,7 +148,8 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 
 /* ─── Session rows ───────────────────────────────────────────────────────── */
 .session-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 32px minmax(132px, 1fr) minmax(142px, 1fr) minmax(156px, 1fr) minmax(170px, 1.1fr);
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
@@ -157,8 +158,20 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 .session-row.is-past-done { border-left-color: var(--success); background: #f4faf5; }
 .session-row.is-past-todo { border-left-color: var(--warning); background: #fffaf3; }
-.session-num { font-size: 12px; font-weight: 700; color: var(--text-faint); min-width: 30px; }
-.session-date { font-size: 13px; min-width: 132px; }
+.session-num { font-size: 12px; font-weight: 700; color: var(--text-faint); }
+.session-date { font-size: 13px; }
+.session-row .btn-session,
+.session-secondary-action .btn { width: 100%; white-space: nowrap; }
+.session-secondary-action { min-width: 0; }
+
+@media (max-width: 900px) {
+  .session-row { grid-template-columns: 32px minmax(0, 1fr); }
+  .session-row > * { min-width: 0; }
+  .session-row .badge,
+  .session-row .btn-session,
+  .session-secondary-action { grid-column: 2; }
+  .session-secondary-action:empty { display: none; }
+}
 
 /* ─── Page header (Soạn nội dung / Soạn lớp) ─────────────────────────────── */
 .back-btn {
