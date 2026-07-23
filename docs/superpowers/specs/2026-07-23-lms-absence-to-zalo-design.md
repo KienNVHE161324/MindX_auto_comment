@@ -39,11 +39,13 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 - Hàng không có nút phụ vẫn giữ cột trống, không kéo các cột trước hoặc sau sang vị trí khác.
 - Trên màn hình hẹp, grid được phép xuống dòng để không làm tràn khung.
 
-## Ghi nhận xét LMS ở manual mode
+## Ghi nhận xét LMS theo mode hiện tại
 
-- Sau khi mở popup nhận xét học sinh, nếu switch có nhãn `In by-areas mode, click to switch to manual mode` thì click switch trước.
-- Chờ Quill `.ql-editor[contenteditable="true"]` sẵn sàng, thay toàn bộ nội dung và bấm Save.
-- Nếu popup đã ở manual mode thì không click switch lần nữa.
+- Sau khi mở popup, nhận biết mode hiện tại từ `aria-label` của switch nhưng không thay đổi switch.
+- Nếu Quill `.ql-editor[contenteditable="true"]` đã hiển thị thì ghi đè trực tiếp trong mode hiện tại.
+- Nếu popup mới ở trạng thái hiển thị, click vùng nhận xét để mở editor thuộc chính mode hiện tại, rồi chờ Quill sẵn sàng.
+- Mode Area tiếp tục lưu bằng editor Area; mode Manual tiếp tục lưu bằng editor Manual.
+- Thay toàn bộ nội dung, bấm `Lưu`/`Save`, và xác nhận thành công khi editor đóng hoặc quay về trạng thái hiển thị.
 
 ## Kiểm thử
 
@@ -56,7 +58,7 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 - Preview đang mở được cập nhật sau post LMS và hiển thị `Tên: nghỉ`.
 - Auto-send Zalo cũng hiển thị `Tên: nghỉ`.
 - Báo cáo LMS tách riêng nghỉ và lỗi/thiếu nội dung.
-- Popup chuyển sang manual mode trước khi ghi Quill.
+- Popup giữ nguyên mode Area/Manual và ghi đúng editor của mode đang dùng.
 - Các hàng buổi học thẳng cột khi có hoặc không có nút phụ.
 - Layout buổi học không tràn khung trên màn hình hẹp.
 - Typecheck và toàn bộ test dự án đạt.
