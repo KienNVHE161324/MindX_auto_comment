@@ -365,3 +365,30 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .catch-up-result-error {
   color: #b42318;
 }
+
+.class-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.class-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.class-filter-group .check.compact {
+  margin: 0;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.class-filter-count {
+  margin-left: auto;
+  color: #667085;
+  font-size: 13px;
+}

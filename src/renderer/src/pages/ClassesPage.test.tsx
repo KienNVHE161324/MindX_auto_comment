@@ -21,7 +21,10 @@ beforeEach(() => stub())
 const c1: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [{ id: 's1', name: 'An' }], sessions: [] }
 const cWithSession: SchoolClass = {
   id: 'c2', code: 'B2', name: 'Lớp B2', students: [{ id: 's2', name: 'Bình' }],
-  sessions: [{ id: 'ss1', dateTime: '2026-07-20T18:00:00' }],
+  sessions: [
+    { id: 'ss0', dateTime: '2020-07-20T18:00:00' },
+    { id: 'ss1', dateTime: '2099-07-20T18:00:00' },
+  ],
 }
 const catchUpItem = {
   classId: 'c1',
@@ -31,8 +34,87 @@ const catchUpItem = {
   sessionDateTime: '2026-07-20T18:00:00',
   channels: ['lms' as const, 'zalo' as const],
 }
+const filterClassesFixture: SchoolClass[] = [
+  {
+    id: 'running-r',
+    code: 'ABC-R01',
+    name: 'Robotics',
+    students: [],
+    sessions: [
+      { id: 'r-past', dateTime: '2020-01-01T09:00:00' },
+      { id: 'r-future', dateTime: '2099-01-01T09:00:00' },
+    ],
+  },
+  {
+    id: 'future-g',
+    code: 'ABC-G01',
+    name: 'Game',
+    students: [],
+    sessions: [{ id: 'g-future', dateTime: '2099-01-01T09:00:00' }],
+  },
+  {
+    id: 'ended-j',
+    code: 'ABC-J01',
+    name: 'Web',
+    students: [],
+    sessions: [{ id: 'j-past', dateTime: '2020-01-01T09:00:00' }],
+  },
+]
+
+async function enableNotStartedClasses() {
+  fireEvent.click((await screen.findAllByRole('checkbox'))[0])
+}
+
+async function enableEndedClasses() {
+  fireEvent.click((await screen.findAllByRole('checkbox'))[2])
+}
 
 describe('ClassesPage', () => {
+  it('mặc định chỉ hiện lớp đang diễn ra và số X/Y', async () => {
+    stub({
+      listClasses: vi.fn(async () => filterClassesFixture),
+      getContent: vi.fn(async () => null),
+    })
+    render(<ClassesPage />)
+
+    expect(await screen.findByText('ABC-R01')).toBeInTheDocument()
+    expect(screen.queryByText('ABC-G01')).not.toBeInTheDocument()
+    expect(screen.queryByText('ABC-J01')).not.toBeInTheDocument()
+    expect(screen.getByText('Đang xem 1/3 lớp')).toBeInTheDocument()
+  })
+
+  it('bật lớp chưa bắt đầu rồi thu hẹp còn Game', async () => {
+    stub({
+      listClasses: vi.fn(async () => filterClassesFixture),
+      getContent: vi.fn(async () => null),
+    })
+    render(<ClassesPage />)
+    await screen.findByText('ABC-R01')
+
+    fireEvent.click(screen.getByLabelText('Lọc trạng thái Chưa bắt đầu'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Robotics'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Web'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Scratch'))
+
+    expect(screen.getByText('ABC-G01')).toBeInTheDocument()
+    expect(screen.queryByText('ABC-R01')).not.toBeInTheDocument()
+    expect(screen.getByText('Đang xem 1/3 lớp')).toBeInTheDocument()
+  })
+
+  it('phân biệt không có kết quả lọc với repository chưa có lớp', async () => {
+    stub({
+      listClasses: vi.fn(async () => filterClassesFixture),
+      getContent: vi.fn(async () => null),
+    })
+    render(<ClassesPage />)
+    await screen.findByText('ABC-R01')
+
+    fireEvent.click(screen.getByLabelText('Lọc trạng thái Đang diễn ra'))
+
+    expect(screen.getByText('Không có lớp phù hợp với bộ lọc.')).toBeInTheDocument()
+    expect(screen.queryByText('Chưa có lớp nào.')).not.toBeInTheDocument()
+  })
+
   it('hiện lịch bị bỏ lỡ khi mở app nhưng chưa tự gửi', async () => {
     const api = stub({
       getAutoSendCatchUp: vi.fn(async () => [catchUpItem]),
@@ -95,6 +177,7 @@ describe('ClassesPage', () => {
   it('liệt kê lớp đã có (mã + tên + số HS)', async () => {
     stub({ listClasses: vi.fn(async () => [c1]) })
     render(<ClassesPage />)
+    await enableNotStartedClasses()
     await waitFor(() => expect(screen.getByText('A1')).toBeInTheDocument())
     expect(screen.getByText(/Lớp A1/)).toBeInTheDocument()
     expect(screen.getByText(/1 học sinh/i)).toBeInTheDocument()
@@ -103,10 +186,15 @@ describe('ClassesPage', () => {
   it('bật LMS trên thẻ lớp và tự lưu độc lập với Zalo', async () => {
     const configured: SchoolClass = {
       ...c1,
+      sessions: [
+        { id: 'past', dateTime: '2020-01-01T18:00:00' },
+        { id: 'future', dateTime: '2099-01-01T18:00:00' },
+      ],
       autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
     }
     const api = stub({ listClasses: vi.fn(async () => [configured]) })
     render(<ClassesPage />)
+    await enableNotStartedClasses()
 
     fireEvent.click(await screen.findByLabelText('Tự động LMS A1'))
 
@@ -121,10 +209,15 @@ describe('ClassesPage', () => {
   it('đổi giờ trên thẻ lớp và tự lưu', async () => {
     const configured: SchoolClass = {
       ...c1,
+      sessions: [
+        { id: 'past', dateTime: '2020-01-01T18:00:00' },
+        { id: 'future', dateTime: '2099-01-01T18:00:00' },
+      ],
       autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
     }
     const api = stub({ listClasses: vi.fn(async () => [configured]) })
     render(<ClassesPage />)
+    await enableNotStartedClasses()
 
     fireEvent.change(await screen.findByLabelText('Giờ tự động A1'), {
       target: { value: '19:30' },
@@ -139,6 +232,10 @@ describe('ClassesPage', () => {
   it('lưu lịch lỗi thì khôi phục giá trị cũ và hiện lỗi', async () => {
     const configured: SchoolClass = {
       ...c1,
+      sessions: [
+        { id: 'past', dateTime: '2020-01-01T18:00:00' },
+        { id: 'future', dateTime: '2099-01-01T18:00:00' },
+      ],
       autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
     }
     stub({
@@ -161,6 +258,7 @@ describe('ClassesPage', () => {
   it('bấm "Xóa" mở hộp xác nhận; xác nhận gọi deleteClass rồi tải lại', async () => {
     const api = stub({ listClasses: vi.fn(async () => [c1]) })
     render(<ClassesPage />)
+    await enableNotStartedClasses()
     await waitFor(() => screen.getByText('A1'))
     fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
     // Chưa xóa cho tới khi xác nhận trong hộp thoại
@@ -174,6 +272,7 @@ describe('ClassesPage', () => {
   it('bấm "Xóa" rồi "Hủy" không gọi deleteClass', async () => {
     const api = stub({ listClasses: vi.fn(async () => [c1]) })
     render(<ClassesPage />)
+    await enableNotStartedClasses()
     await waitFor(() => screen.getByText('A1'))
     fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
     const dialog = await screen.findByRole('dialog')
@@ -185,7 +284,7 @@ describe('ClassesPage', () => {
     stub({ listClasses: vi.fn(async () => [cWithSession]), getContent: vi.fn(async () => null), getConfig: vi.fn(async () => (await import('../../../shared/types')).DEFAULT_CONFIG) })
     render(<ClassesPage />)
     await waitFor(() => screen.getByText('B2'))
-    fireEvent.click(screen.getByLabelText(/soạn nội dung B2/i))
+    fireEvent.click(screen.getAllByLabelText(/soạn nội dung B2/i)[0])
     await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toBeInTheDocument())
   })
 
@@ -240,7 +339,7 @@ describe('ClassesPage', () => {
       sessions: [
         { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
         { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
-        { id: 'ss3', dateTime: '2026-01-15T14:00:00' },
+        { id: 'ss3', dateTime: '2099-01-15T14:00:00' },
       ],
     }
     stub({
@@ -278,7 +377,7 @@ describe('ClassesPage', () => {
       id: 'c4', code: 'D4', name: 'Lớp D4', students: [{ id: 's1', name: 'An' }],
       sessions: [
         { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
-        { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
+        { id: 'ss2', dateTime: '2099-01-08T14:00:00' },
       ],
     }
     stub({
@@ -302,7 +401,7 @@ describe('ClassesPage', () => {
       id: 'c3', code: 'C3', name: 'Lớp C3', students: [{ id: 's1', name: 'An' }],
       sessions: [
         { id: 'ss1', dateTime: '2026-01-01T14:00:00' },
-        { id: 'ss2', dateTime: '2026-01-08T14:00:00' },
+        { id: 'ss2', dateTime: '2099-01-08T14:00:00' },
       ],
     }
     const prevContent = { id: 'ss1', classId: 'c3', sessionId: 'ss1', lessonContent: 'Bài trước', homework: 'BT', comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }] }

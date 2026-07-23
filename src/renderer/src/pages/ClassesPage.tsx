@@ -11,6 +11,13 @@ import {
 import { newId } from '../../../shared/id'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import { getClassStatus, ClassStatus } from '../../../shared/classStatus'
+import {
+  ALL_CLASS_PROGRAMS,
+  ClassListFilters,
+  NamedClassProgram,
+  DEFAULT_CLASS_FILTERS,
+  filterClasses,
+} from '../../../shared/classFilters'
 import { computeContentTargets, mergeContentResult } from '../../../shared/lmsSync'
 import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress, SessionContentStatus } from '../../../shared/sessionContent'
 import ClassEditor from './ClassEditor'
@@ -40,6 +47,19 @@ const CATCH_UP_RESULT_LABEL: Record<AutoSendCatchUpResult['status'], string> = {
   error: 'lỗi',
 }
 
+const STATUS_FILTER_LABEL: Record<ClassStatus, string> = {
+  'chưa bắt đầu': 'Chưa bắt đầu',
+  'đang diễn ra': 'Đang diễn ra',
+  'đã kết thúc': 'Đã kết thúc',
+}
+
+const PROGRAM_FILTER_LABEL: Record<NamedClassProgram, string> = {
+  robotics: 'Robotics',
+  game: 'Game',
+  web: 'Web',
+  scratch: 'Scratch',
+}
+
 export default function ClassesPage({ active = true }: { active?: boolean }): JSX.Element {
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -57,6 +77,11 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [catchUpResults, setCatchUpResults] = useState<AutoSendCatchUpResult[]>([])
   const [catchUpOpen, setCatchUpOpen] = useState(true)
   const [catchUpRunning, setCatchUpRunning] = useState(false)
+  const [classFilters, setClassFilters] = useState<ClassListFilters>(() => ({
+    statuses: new Set(DEFAULT_CLASS_FILTERS.statuses),
+    programs: new Set(DEFAULT_CLASS_FILTERS.programs),
+  }))
+  const visibleClasses = filterClasses(classes, classFilters)
 
   const reload = async (): Promise<void> => {
     try {
@@ -213,6 +238,24 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     }
   }
 
+  const toggleStatus = (status: ClassStatus): void => {
+    setClassFilters(current => {
+      const statuses = new Set(current.statuses)
+      if (statuses.has(status)) statuses.delete(status)
+      else statuses.add(status)
+      return { ...current, statuses }
+    })
+  }
+
+  const toggleProgram = (program: NamedClassProgram): void => {
+    setClassFilters(current => {
+      const programs = new Set(current.programs)
+      if (programs.has(program)) programs.delete(program)
+      else programs.add(program)
+      return { ...current, programs }
+    })
+  }
+
   if (composing) {
     return <SessionComposer cls={composing.cls} session={composing.session} onDone={() => setComposing(null)} />
   }
@@ -322,12 +365,51 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         </div>
       )}
 
+      <div className="card card-pad class-filter-bar">
+        <div className="class-filter-group">
+          <strong>Trạng thái</strong>
+          {(Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]).map(status => (
+            <label className="check compact" key={status}>
+              <input
+                type="checkbox"
+                aria-label={`Lọc trạng thái ${STATUS_FILTER_LABEL[status]}`}
+                checked={classFilters.statuses.has(status)}
+                onChange={() => toggleStatus(status)}
+              />
+              {STATUS_FILTER_LABEL[status]}
+            </label>
+          ))}
+        </div>
+        <div className="class-filter-group">
+          <strong>Loại lớp</strong>
+          {ALL_CLASS_PROGRAMS.map(program => (
+            <label className="check compact" key={program}>
+              <input
+                type="checkbox"
+                aria-label={`Lọc loại ${PROGRAM_FILTER_LABEL[program]}`}
+                checked={classFilters.programs.has(program)}
+                onChange={() => toggleProgram(program)}
+              />
+              {PROGRAM_FILTER_LABEL[program]}
+            </label>
+          ))}
+        </div>
+        <span className="class-filter-count">
+          Đang xem {visibleClasses.length}/{classes.length} lớp
+        </span>
+      </div>
+
       {!error && classes.length === 0 && !syncPreview && (
         <div className="card card-pad text-muted">Chưa có lớp nào.</div>
       )}
+      {!error && classes.length > 0 && visibleClasses.length === 0 && (
+        <div className="card card-pad text-muted">
+          Không có lớp phù hợp với bộ lọc.
+        </div>
+      )}
 
       <div className="stack">
-        {classes.map(c => (
+        {visibleClasses.map(c => (
           <div key={c.id} className="card card-pad">
             <div className="row-between">
               <div>
