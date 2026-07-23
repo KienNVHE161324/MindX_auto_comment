@@ -2,7 +2,7 @@
 
 ## Mục tiêu
 
-Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái nghỉ của học sinh trong buổi đó và loại học sinh khỏi nội dung xem trước/copy/gửi Zalo.
+Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái nghỉ của học sinh trong buổi đó và hiển thị học sinh dưới dạng `Tên: nghỉ` trong nội dung xem trước/copy/gửi Zalo.
 
 ## Luồng dữ liệu
 
@@ -13,7 +13,7 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 2. `LmsPostResult` truyền cả ba nhóm qua IPC.
 3. `SessionComposer` khớp `absentStudentNames` với `SchoolClass.students` theo tên không phân biệt hoa thường và cho phép tên LMS/local chứa nhau.
 4. ID khớp được hợp nhất vào `SessionContent.absentStudentIds` và lưu ngay.
-5. Mọi luồng dựng tin Zalo tiếp tục lọc theo `absentStudentIds`, nên học sinh nghỉ biến mất khỏi xem trước, copy và gửi tự động.
+5. Mọi luồng dựng tin Zalo dùng `absentStudentIds`: học sinh có mặt hiện nhận xét, học sinh nghỉ hiện `Tên: nghỉ`.
 
 ## Quy tắc
 
@@ -21,14 +21,29 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 - Lỗi kỹ thuật hoặc thiếu nội dung không được coi là nghỉ.
 - Không xóa các `absentStudentIds` đã lưu trước đó; kết quả mới được hợp nhất, không ghi đè mất dữ liệu.
 - So khớp tên phải trim, lowercase và chấp nhận một tên là chuỗi con của tên còn lại.
-- Sau khi gửi LMS, state React và file nội dung cục bộ phải được cập nhật cùng một giá trị.
+- Trước khi LMS trả kết quả, preview giữ nguyên nội dung giáo viên đã soạn và không tự suy đoán học sinh nghỉ.
+- Sau khi LMS trả kết quả, state React và file nội dung cục bộ phải được cập nhật cùng một giá trị.
+- Nếu preview đang mở, preview được dựng lại ngay sau khi lưu kết quả LMS.
 - `postedToLms` chỉ được đặt khi kết quả không có lỗi và có ít nhất một học sinh được đăng, giữ nguyên quy tắc hiện tại.
 
 ## Hiển thị
 
-- Báo cáo LMS vẫn hiển thị `skipped` như hiện tại.
-- Học sinh nghỉ có thể tiếp tục xuất hiện trong dòng “Bỏ qua”, nhưng nguồn dữ liệu chính xác để lọc Zalo là `absentStudentNames`.
-- Nếu bản xem trước Zalo đang mở, người dùng bấm “Xem trước Zalo” lại để dựng nội dung từ state mới.
+- Báo cáo LMS tách ba dòng: đã nhận xét, học sinh nghỉ, và bỏ qua do lỗi/thiếu nội dung.
+- Tên trong `absentStudentNames` không được lặp lại trong dòng lỗi/thiếu nội dung.
+- Preview, Copy và tự động gửi Zalo dùng cùng quy tắc: học sinh nghỉ hiện `Tên: nghỉ`.
+
+## Căn chỉnh danh sách buổi học
+
+- Mọi hàng buổi học dùng chung một grid gồm năm cột: số thứ tự, ngày giờ, trạng thái, nút chính và nút phụ.
+- Chiều rộng mỗi cột phải ổn định giữa các hàng để trạng thái và các nút không bị lệch theo độ dài nội dung.
+- Hàng không có nút phụ vẫn giữ cột trống, không kéo các cột trước hoặc sau sang vị trí khác.
+- Trên màn hình hẹp, grid được phép xuống dòng để không làm tràn khung.
+
+## Ghi nhận xét LMS ở manual mode
+
+- Sau khi mở popup nhận xét học sinh, nếu switch có nhãn `In by-areas mode, click to switch to manual mode` thì click switch trước.
+- Chờ Quill `.ql-editor[contenteditable="true"]` sẵn sàng, thay toàn bộ nội dung và bấm Save.
+- Nếu popup đã ở manual mode thì không click switch lần nữa.
 
 ## Kiểm thử
 
@@ -37,5 +52,11 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 - Tên LMS/local khớp không phân biệt hoa thường và theo quan hệ chuỗi con.
 - ID nghỉ mới được hợp nhất với ID nghỉ cũ.
 - Sau khi post LMS, `saveContent` nhận `absentStudentIds` đã cập nhật.
-- Preview Zalo loại học sinh nghỉ.
+- Preview trước post LMS chưa tự thay nội dung.
+- Preview đang mở được cập nhật sau post LMS và hiển thị `Tên: nghỉ`.
+- Auto-send Zalo cũng hiển thị `Tên: nghỉ`.
+- Báo cáo LMS tách riêng nghỉ và lỗi/thiếu nội dung.
+- Popup chuyển sang manual mode trước khi ghi Quill.
+- Các hàng buổi học thẳng cột khi có hoặc không có nút phụ.
+- Layout buổi học không tràn khung trên màn hình hẹp.
 - Typecheck và toàn bộ test dự án đạt.
