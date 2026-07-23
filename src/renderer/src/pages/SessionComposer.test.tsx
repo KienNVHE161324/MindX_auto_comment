@@ -7,6 +7,7 @@ import {
   ClassSession,
   DEFAULT_CONFIG,
   LmsPostResult,
+  ZaloSendSessionResult,
 } from '../../../shared/types'
 import { mergeAbsentStudentNames } from '../../../shared/lmsSync'
 
@@ -26,6 +27,15 @@ function stub(overrides: Partial<Window['api']> = {}) {
     })),
     lmsPostSessionAndSave: vi.fn(),
     lmsSyncAll: vi.fn(),
+    zaloSendSession: vi.fn(async () => ({
+      status: 'sent' as const,
+      message: 'Đã gửi Zalo.',
+      content: {
+        id: 'ss1', classId: 'c1', sessionId: 'ss1',
+        lessonContent: '', homework: '', comments: [],
+        zaloSentAt: '2026-07-23T12:00:00.000Z',
+      },
+    })),
     ...overrides,
   }
   if (!overrides.lmsPostSessionAndSave) {
@@ -625,5 +635,56 @@ describe('SessionComposer', () => {
     await waitFor(() => screen.getByRole('button', { name: /gửi lên lms/i }))
     expect(screen.getByRole('button', { name: /gửi lên lms/i })).toBeDisabled()
     expect(screen.getByText(/cơ chế đặc biệt/i)).toBeInTheDocument()
+  })
+})
+
+describe('SessionComposer — Zalo Web', () => {
+  it('sends current session and displays persisted success', async () => {
+    const api = stub()
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
+
+    await waitFor(() => expect(api.zaloSendSession).toHaveBeenCalledWith({
+      classId: 'c1',
+      sessionId: 'ss1',
+    }))
+    expect(await screen.findByText('Đã gửi Zalo.')).toBeInTheDocument()
+  })
+
+  it('locks conflicting mutations while Zalo send is pending', async () => {
+    stub({
+      zaloSendSession: vi.fn(
+        () => new Promise<ZaloSendSessionResult>(() => {}),
+      ),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
+
+    expect(screen.getByRole('button', { name: 'Đang gửi Zalo...' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Lưu' })).toBeDisabled()
+  })
+
+  it('shows login-required without claiming success', async () => {
+    stub({
+      zaloSendSession: vi.fn(async (): Promise<ZaloSendSessionResult> => ({
+        status: 'login-required',
+        message: 'Cần đăng nhập Zalo Web rồi gửi lại.',
+        content: {
+          id: 'ss1', classId: 'c1', sessionId: 'ss1',
+          lessonContent: '', homework: '', comments: [],
+        },
+      })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
+
+    expect(await screen.findByText(/Cần đăng nhập Zalo Web/i)).toBeInTheDocument()
+    expect(screen.queryByText('Đã gửi Zalo.')).not.toBeInTheDocument()
   })
 })
