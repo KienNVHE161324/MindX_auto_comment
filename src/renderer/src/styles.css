@@ -311,3 +311,19 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .divider { height: 1px; background: var(--border); border: none; margin: 14px 0; }
+.auto-send-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auto-send-controls .check.compact {
+  margin: 0;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.auto-send-time {
+  width: 112px;
+}

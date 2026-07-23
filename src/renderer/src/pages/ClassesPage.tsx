@@ -1,5 +1,11 @@
 import { useEffect, useState } from 'react'
-import { SchoolClass, ClassSession, SessionContent, LmsScrapedClass } from '../../../shared/types'
+import {
+  AutoSendConfig,
+  SchoolClass,
+  ClassSession,
+  SessionContent,
+  LmsScrapedClass,
+} from '../../../shared/types'
 import { newId } from '../../../shared/id'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import { getClassStatus, ClassStatus } from '../../../shared/classStatus'
@@ -37,6 +43,8 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [sessionContents, setSessionContents] = useState<Map<string, SessionContent>>(new Map())
   const [syncSummary, setSyncSummary] = useState<{ updated: number; skipped: number } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SchoolClass | null>(null)
+  const [savingSchedules, setSavingSchedules] = useState<Set<string>>(new Set())
+  const [scheduleError, setScheduleError] = useState<string | null>(null)
 
   const reload = async (): Promise<void> => {
     try {
@@ -148,6 +156,30 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     }
   }
 
+  const saveSchedule = async (
+    cls: SchoolClass,
+    autoSend: AutoSendConfig,
+  ): Promise<void> => {
+    const updated = { ...cls, autoSend }
+    setClasses(items => items.map(item => item.id === cls.id ? updated : item))
+    setSavingSchedules(ids => new Set(ids).add(cls.id))
+    try {
+      await window.api.saveClass(updated)
+      setScheduleError(null)
+    } catch (err) {
+      setClasses(items => items.map(item => item.id === cls.id ? cls : item))
+      setScheduleError(
+        `Không lưu được lịch tự động của ${cls.code}: ${(err as Error).message}`,
+      )
+    } finally {
+      setSavingSchedules(ids => {
+        const next = new Set(ids)
+        next.delete(cls.id)
+        return next
+      })
+    }
+  }
+
   if (composing) {
     return <SessionComposer cls={composing.cls} session={composing.session} onDone={() => setComposing(null)} />
   }
@@ -175,6 +207,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         </p>
       )}
       {syncError && <p className="alert alert-error">Lỗi kết nối LMS: {syncError}</p>}
+      {scheduleError && <p className="alert alert-error">{scheduleError}</p>}
 
       {syncSummary && (
         <p className="alert alert-info">
@@ -236,10 +269,51 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                       </>
                     )
                   })()}
-                  {c.autoSend?.enabled && <span>· <span className="text-success">⏰ tự động {c.autoSend.time}</span></span>}
                 </div>
               </div>
               <div className="btn-row">
+                <div className="auto-send-controls" aria-label={`Lịch tự động ${c.code}`}>
+                  <input
+                    type="time"
+                    className="input input-auto auto-send-time"
+                    aria-label={`Giờ tự động ${c.code}`}
+                    value={c.autoSend?.time ?? '18:00'}
+                    disabled={savingSchedules.has(c.id)}
+                    onChange={event => void saveSchedule(c, {
+                      time: event.target.value,
+                      lmsEnabled: c.autoSend?.lmsEnabled ?? false,
+                      zaloEnabled: c.autoSend?.zaloEnabled ?? false,
+                    })}
+                  />
+                  <label className="check compact">
+                    <input
+                      type="checkbox"
+                      aria-label={`Tự động LMS ${c.code}`}
+                      checked={c.autoSend?.lmsEnabled ?? false}
+                      disabled={savingSchedules.has(c.id)}
+                      onChange={event => void saveSchedule(c, {
+                        time: c.autoSend?.time ?? '18:00',
+                        lmsEnabled: event.target.checked,
+                        zaloEnabled: c.autoSend?.zaloEnabled ?? false,
+                      })}
+                    />
+                    LMS
+                  </label>
+                  <label className="check compact">
+                    <input
+                      type="checkbox"
+                      aria-label={`Tự động Zalo ${c.code}`}
+                      checked={c.autoSend?.zaloEnabled ?? false}
+                      disabled={savingSchedules.has(c.id)}
+                      onChange={event => void saveSchedule(c, {
+                        time: c.autoSend?.time ?? '18:00',
+                        lmsEnabled: c.autoSend?.lmsEnabled ?? false,
+                        zaloEnabled: event.target.checked,
+                      })}
+                    />
+                    Zalo
+                  </label>
+                </div>
                 <button className="btn btn-icon-box" aria-label={`Sửa lớp ${c.code}`} title="Sửa lớp" onClick={() => setEditing(c)}><EditIcon /></button>
                 <button className="btn btn-icon-box danger" aria-label={`Xóa lớp ${c.code}`} title="Xóa lớp" onClick={() => setPendingDelete(c)}><TrashIcon /></button>
               </div>

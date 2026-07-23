@@ -34,6 +34,59 @@ describe('ClassesPage', () => {
     expect(screen.getByText(/Lớp A1/)).toBeInTheDocument()
     expect(screen.getByText(/1 học sinh/i)).toBeInTheDocument()
   })
+
+  it('bật LMS trên thẻ lớp và tự lưu độc lập với Zalo', async () => {
+    const configured: SchoolClass = {
+      ...c1,
+      autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
+    }
+    const api = stub({ listClasses: vi.fn(async () => [configured]) })
+    render(<ClassesPage />)
+
+    fireEvent.click(await screen.findByLabelText('Tự động LMS A1'))
+
+    await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith({
+      ...configured,
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
+    }))
+    expect(screen.getByLabelText('Tự động LMS A1')).toBeChecked()
+    expect(screen.getByLabelText('Tự động Zalo A1')).not.toBeChecked()
+  })
+
+  it('đổi giờ trên thẻ lớp và tự lưu', async () => {
+    const configured: SchoolClass = {
+      ...c1,
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
+    }
+    const api = stub({ listClasses: vi.fn(async () => [configured]) })
+    render(<ClassesPage />)
+
+    fireEvent.change(await screen.findByLabelText('Giờ tự động A1'), {
+      target: { value: '19:30' },
+    })
+
+    await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith({
+      ...configured,
+      autoSend: { time: '19:30', lmsEnabled: true, zaloEnabled: false },
+    }))
+  })
+
+  it('lưu lịch lỗi thì khôi phục giá trị cũ và hiện lỗi', async () => {
+    const configured: SchoolClass = {
+      ...c1,
+      autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
+    }
+    stub({
+      listClasses: vi.fn(async () => [configured]),
+      saveClass: vi.fn(async () => { throw new Error('Ổ đĩa không ghi được') }),
+    })
+    render(<ClassesPage />)
+
+    fireEvent.click(await screen.findByLabelText('Tự động LMS A1'))
+
+    await waitFor(() => expect(screen.getByText(/ổ đĩa không ghi được/i)).toBeInTheDocument())
+    expect(screen.getByLabelText('Tự động LMS A1')).not.toBeChecked()
+  })
   it('bấm "+ Thêm lớp" mở trình soạn (hiện ô Mã lớp)', async () => {
     render(<ClassesPage />)
     await waitFor(() => screen.getByText(/^\+ Thêm lớp$/i))

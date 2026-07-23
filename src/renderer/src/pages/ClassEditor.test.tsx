@@ -72,15 +72,9 @@ describe('ClassEditor', () => {
     )
   })
 
-  it('bật gửi tự động + chọn giờ rồi Lưu gọi saveClass với autoSend đúng', async () => {
-    const api = stub()
+  it('không còn cấu hình gửi tự động trong màn soạn lớp', () => {
     render(<ClassEditor cls={base} onDone={() => {}} />)
-    fireEvent.click(screen.getByLabelText(/tự động gửi lms\/zalo/i))
-    fireEvent.change(screen.getByLabelText(/giờ gửi tự động/i), { target: { value: '19:30' } })
-    fireEvent.click(screen.getByText(/^lưu$/i))
-    await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith(
-      expect.objectContaining({ autoSend: { enabled: true, time: '19:30' } }),
-    ))
+    expect(screen.queryByText(/gửi tự động/i)).not.toBeInTheDocument()
   })
 
   it('"Quay lại" gọi onDone', () => {
