@@ -10,6 +10,7 @@ import {
   getAbsentStudentPattern,
   getLmsOverwriteAction,
   getStudentCommentModeFromAriaLabel,
+  getStudentCommentInitialEditorWaitMs,
   getStudentCommentManualActiveSelector,
   getStudentCommentManualModeSelector,
   isStudentCommentSaveConfirmed,
@@ -163,6 +164,12 @@ describe('getStudentCommentModeFromAriaLabel', () => {
 
   it('trả unknown khi LMS đổi nhãn ngoài các mode đã biết', () => {
     expect(getStudentCommentModeFromAriaLabel('Chế độ khác')).toBe('unknown')
+  })
+})
+
+describe('getStudentCommentInitialEditorWaitMs', () => {
+  it('cho Area editor đủ thời gian render trước khi thử click vùng hiển thị', () => {
+    expect(getStudentCommentInitialEditorWaitMs()).toBe(8000)
   })
 })
 

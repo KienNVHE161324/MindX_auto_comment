@@ -77,6 +77,10 @@ export function getStudentCommentModeFromAriaLabel(
   return 'unknown'
 }
 
+export function getStudentCommentInitialEditorWaitMs(): number {
+  return 8000
+}
+
 export async function isStudentCommentSaveConfirmed(
   waitForPopupToClose: () => Promise<void>,
 ): Promise<boolean> {
@@ -687,7 +691,7 @@ export class LmsAutomator {
         // Area và Manual đều dùng Quill. Nếu popup đang ở trạng thái hiển thị,
         // click vùng nhận xét để mở editor của chính mode hiện tại; không đổi switch.
         const editorRendered = await editor
-          .waitFor({ state: 'visible', timeout: 1500 })
+          .waitFor({ state: 'visible', timeout: getStudentCommentInitialEditorWaitMs() })
           .then(() => true)
           .catch(() => false)
         if (!editorRendered) {
