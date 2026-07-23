@@ -53,6 +53,17 @@ export function getStudentCommentManualModeSelector(): string {
   return '[aria-label="In by-areas mode, click to switch to manual mode"]'
 }
 
+export async function isStudentCommentSaveConfirmed(
+  waitForPopupToClose: () => Promise<void>,
+): Promise<boolean> {
+  try {
+    await waitForPopupToClose()
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function getLmsDrawerRefreshSelector(): string {
   return '#detail-content header button:has(svg[data-testid="RefreshIcon"])'
 }
@@ -576,11 +587,12 @@ export class LmsAutomator {
 
         const save = popup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
         await save.click({ timeout: 5000 })
-        await page.waitForTimeout(300)
-        if (await popup.isVisible().catch(() => false)) {
-          await page.keyboard.press('Escape')
+        const saved = await isStudentCommentSaveConfirmed(() =>
+          popup.waitFor({ state: 'hidden', timeout: 5000 }),
+        )
+        if (!saved) {
+          throw new Error('LMS không xác nhận đã lưu nhận xét: popup vẫn đang mở.')
         }
-        await popup.waitFor({ state: 'hidden', timeout: 5000 })
         await page.waitForTimeout(300)
         posted.push(studentName)
       } catch (err) {

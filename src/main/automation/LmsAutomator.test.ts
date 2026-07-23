@@ -9,6 +9,7 @@ import {
   getAbsentStudentPattern,
   getLmsOverwriteAction,
   getStudentCommentManualModeSelector,
+  isStudentCommentSaveConfirmed,
   getStudentCommentEditorSelector,
   getLmsDrawerRefreshSelector,
   getStudentCommentButtonPattern,
@@ -96,6 +97,16 @@ describe('getStudentCommentManualModeSelector', () => {
     expect(getStudentCommentManualModeSelector()).toBe(
       '[aria-label="In by-areas mode, click to switch to manual mode"]',
     )
+  })
+})
+
+describe('isStudentCommentSaveConfirmed', () => {
+  it('không xác nhận đã lưu khi popup không tự đóng sau Save', async () => {
+    const saved = await isStudentCommentSaveConfirmed(async () => {
+      throw new Error('popup remained open')
+    })
+
+    expect(saved).toBe(false)
   })
 })
 
