@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { SchoolClass, ClassSession, SessionContent, LmsPostParams, LmsPostResult, AppConfig } from '../../shared/types'
 import { planAutoSend, buildZaloMessage } from '../../shared/autoSend'
+import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 
 export interface AutoSendDeps {
   getClasses: () => Promise<SchoolClass[]>
@@ -106,11 +107,28 @@ export class AutoSendScheduler {
         comments,
       })
 
-      if (result.error || result.posted.length === 0) {
+      if (result.error) {
         log(`[AutoSend] ${cls.code}: gửi LMS thất bại — ${result.error ?? 'không HS nào được gửi'}`)
         return content
       }
-      return { ...content, postedToLms: true }
+
+      const absentStudentIds = mergeAbsentStudentNames(
+        cls.students,
+        content.absentStudentIds ?? [],
+        result.absentStudentNames,
+      )
+      const absenceChanged = absentStudentIds.length !== (content.absentStudentIds ?? []).length
+      const didPost = result.posted.length > 0
+      if (!didPost) {
+        log(`[AutoSend] ${cls.code}: gửi LMS thất bại — không HS nào được gửi`)
+      }
+      if (!didPost && !absenceChanged) return content
+
+      return {
+        ...content,
+        ...(absenceChanged ? { absentStudentIds } : {}),
+        ...(didPost ? { postedToLms: true } : {}),
+      }
     } catch (err) {
       log(`[AutoSend] ${cls.code}: lỗi gửi LMS — ${(err as Error).message}`)
       return content

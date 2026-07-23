@@ -184,14 +184,30 @@ describe('SessionComposer', () => {
     })
     render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
+    fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'Bài gốc' } })
     fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'Ngoan' } })
     fireEvent.change(screen.getByLabelText(/nhận xét Nguyễn Sách Sâm/i), { target: { value: 'Chăm' } })
+    fireEvent.change(screen.getByLabelText(/bài tập về nhà/i), { target: { value: 'BT gốc' } })
     fireEvent.click(screen.getByText(/xem trước/i))
     const pre = await screen.findByLabelText(/xem trước zalo/i)
     expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
 
     fireEvent.click(screen.getByText(/gửi lên lms/i))
     await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalled())
+    expect(screen.getByLabelText(/nội dung bài học/i)).toBeDisabled()
+    expect(screen.getByLabelText(/^nhận xét An$/i)).toBeDisabled()
+    expect(screen.getByLabelText(/nhận xét Nguyễn Sách Sâm/i)).toBeDisabled()
+    expect(screen.getByLabelText(/bài tập về nhà/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^lưu$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /sửa tất cả bằng AI/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /nạp PDF/i })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'Bài bị sửa' } })
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'Bị mất' } })
+    fireEvent.change(screen.getByLabelText(/bài tập về nhà/i), { target: { value: 'BT bị sửa' } })
+    expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài gốc')
+    expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('Ngoan')
+    expect(screen.getByLabelText(/bài tập về nhà/i)).toHaveValue('BT gốc')
     expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
 
     resolveLms({
@@ -200,7 +216,12 @@ describe('SessionComposer', () => {
       absentStudentNames: ['Sách Sâm'],
     })
     await waitFor(() => expect(api.saveContent).toHaveBeenCalledWith(
-      expect.objectContaining({ absentStudentIds: ['s2'], postedToLms: true }),
+      expect.objectContaining({
+        lessonContent: 'Bài gốc',
+        homework: 'BT gốc',
+        absentStudentIds: ['s2'],
+        postedToLms: true,
+      }),
     ))
     expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
 

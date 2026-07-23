@@ -562,19 +562,20 @@ export class LmsAutomator {
         await openComment.scrollIntoViewIfNeeded()
         await openComment.evaluate(element => (element as HTMLElement).click())
 
-        popup = page.locator('[role="dialog"]').last()
-        await popup.waitFor({ state: 'visible', timeout: 8000 })
+        const activePopup = page.locator('[role="dialog"]').last()
+        popup = activePopup
+        await activePopup.waitFor({ state: 'visible', timeout: 8000 })
 
         // Luôn thay nội dung cũ bằng bản mới trong app; chỉ bỏ qua khi bản mới trống.
-        const commentArea = popup.locator('table td p').first()
+        const commentArea = activePopup.locator('table td p').first()
         await commentArea.click({ timeout: 5000 })
 
-        const manualMode = popup.locator(getStudentCommentManualModeSelector()).first()
+        const manualMode = activePopup.locator(getStudentCommentManualModeSelector()).first()
         if ((await manualMode.count()) > 0 && await manualMode.isVisible()) {
           await manualMode.click({ timeout: 5000 })
         }
 
-        const editor = popup.locator(getStudentCommentEditorSelector()).first()
+        const editor = activePopup.locator(getStudentCommentEditorSelector()).first()
         await editor.waitFor({ state: 'visible', timeout: 8000 })
         await editor.fill(commentData.text)
 
@@ -585,10 +586,10 @@ export class LmsAutomator {
           throw new Error(`LMS chưa nhận nội dung sau khi click vùng comment. HTML debug: ${debugPath}`)
         }
 
-        const save = popup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
+        const save = activePopup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
         await save.click({ timeout: 5000 })
         const saved = await isStudentCommentSaveConfirmed(() =>
-          popup.waitFor({ state: 'hidden', timeout: 5000 }),
+          activePopup.waitFor({ state: 'hidden', timeout: 5000 }),
         )
         if (!saved) {
           throw new Error('LMS không xác nhận đã lưu nhận xét: popup vẫn đang mở.')

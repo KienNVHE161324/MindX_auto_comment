@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG,
   LmsPostResult,
@@ -32,6 +32,7 @@ export default function SessionComposer(
   const [lmsPosting, setLmsPosting] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
+  const lmsPostingRef = useRef(false)
 
   const sessionNum = getSessionNumber(cls.sessions, session.id)
   const lmsBlocked = isLmsBlockedSession(cls.sessions, session.id)
@@ -39,7 +40,7 @@ export default function SessionComposer(
   useEffect(() => {
     void window.api.getConfig().then(setConfig)
     void window.api.getContent(session.id).then(existing => {
-      if (!existing) return
+      if (!existing || lmsPostingRef.current) return
       // Đồng bộ nhận xét theo roster hiện tại: giữ nhận xét cũ của HS còn trong lớp,
       // thêm entry rỗng cho HS mới, loại nhận xét của HS đã bị xóa khỏi lớp.
       const comments = cls.students.map(
@@ -50,6 +51,7 @@ export default function SessionComposer(
   }, [session.id, cls])
 
   const mutate = (updater: (prev: SessionContent) => SessionContent): void => {
+    if (lmsPostingRef.current) return
     setContent(updater)
     setSaved(false)
   }
@@ -108,7 +110,8 @@ export default function SessionComposer(
   const anyPolished = content.comments.some(c => c.polished)
 
   const postToLms = async (): Promise<void> => {
-    if (lmsBlocked) return
+    if (lmsBlocked || lmsPostingRef.current) return
+    lmsPostingRef.current = true
     setLmsPosting(true)
     setLmsResult(null)
     setError(null)
@@ -163,6 +166,7 @@ export default function SessionComposer(
     } catch (err) {
       setError((err as Error).message)
     } finally {
+      lmsPostingRef.current = false
       setLmsPosting(false)
       setLmsStatus('')
     }
@@ -204,21 +208,22 @@ export default function SessionComposer(
             className="textarea"
             rows={6}
             value={content.lessonContent}
+            disabled={lmsPosting}
             onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
           />
         </div>
-        <button className="btn btn-sm" onClick={loadPdf}>Nạp PDF &amp; trích</button>
+        <button className="btn btn-sm" onClick={loadPdf} disabled={lmsPosting}>Nạp PDF &amp; trích</button>
       </section>
 
       <section className="section">
         <div className="row-between" style={{ marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>Nhận xét học sinh</h3>
           <div className="btn-row">
-            <button className="btn btn-sm btn-primary" onClick={aiRewriteAll} disabled={rewritingAll || cls.students.length === 0}>
+            <button className="btn btn-sm btn-primary" onClick={aiRewriteAll} disabled={lmsPosting || rewritingAll || cls.students.length === 0}>
               {rewritingAll ? 'Đang sửa...' : 'Sửa tất cả bằng AI'}
             </button>
             {anyPolished && (
-              <button className="btn btn-sm btn-ghost" onClick={undoAllAi}>Hoàn tác tất cả</button>
+              <button className="btn btn-sm btn-ghost" onClick={undoAllAi} disabled={lmsPosting}>Hoàn tác tất cả</button>
             )}
           </div>
         </div>
@@ -242,6 +247,7 @@ export default function SessionComposer(
                   rows={2}
                   placeholder={absent ? 'Học sinh nghỉ — không gửi nhận xét' : 'Nhập nhận xét…'}
                   value={cm.polished || cm.raw}
+                  disabled={lmsPosting}
                   onChange={e => {
                     if (cm.polished) {
                       setComment(s.id, { polished: e.target.value })
@@ -265,6 +271,7 @@ export default function SessionComposer(
             className="textarea"
             rows={3}
             value={content.homework}
+            disabled={lmsPosting}
             onChange={e => mutate(prev => ({ ...prev, homework: e.target.value }))}
           />
         </div>
@@ -272,7 +279,7 @@ export default function SessionComposer(
 
       <div className="action-bar">
         <button className="btn" onClick={showPreview}>Xem trước Zalo</button>
-        <button className="btn btn-primary" onClick={save}>Lưu</button>
+        <button className="btn btn-primary" onClick={save} disabled={lmsPosting}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
         <button className="btn btn-primary" onClick={postToLms} disabled={lmsPosting || lmsBlocked}>
