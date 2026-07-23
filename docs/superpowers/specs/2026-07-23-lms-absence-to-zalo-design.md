@@ -43,9 +43,11 @@ Sau khi LMS xác định một học sinh nghỉ, app phải lưu trạng thái 
 
 - Sau khi mở popup, nhận biết mode hiện tại từ `aria-label` của switch nhưng không thay đổi switch.
 - Nếu Quill `.ql-editor[contenteditable="true"]` đã hiển thị thì ghi đè trực tiếp trong mode hiện tại.
-- Nếu popup mới ở trạng thái hiển thị, click vùng nhận xét để mở editor thuộc chính mode hiện tại, rồi chờ Quill sẵn sàng.
+- Sau khi mở popup, chờ ngắn cho Quill render xong trước khi quyết định editor chưa tồn tại.
+- Chỉ khi Quill thực sự không xuất hiện mới click vùng nhận xét để mở editor thuộc chính mode hiện tại.
 - Mode Area tiếp tục lưu bằng editor Area; mode Manual tiếp tục lưu bằng editor Manual.
-- Thay toàn bộ nội dung, bấm `Lưu`/`Save`, và xác nhận thành công khi editor đóng hoặc quay về trạng thái hiển thị.
+- Trước khi bấm `Lưu`/`Save`, bắt GraphQL request có `operationName: UpdateSlotComment`.
+- Chỉ xác nhận thành công khi response HTTP thành công, không có `errors`, và có `data.classes.updateSlotComment`; popup/editor không bắt buộc tự đóng.
 
 ## Kiểm thử
 
