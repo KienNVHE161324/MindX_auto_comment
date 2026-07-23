@@ -7,7 +7,7 @@ import {
   LmsContentTarget, LmsContentResult, LmsSyncAllResult,
 } from '../../shared/types'
 import { WorkflowMutex } from './WorkflowMutex'
-import { resolveUniqueNameMatch } from '../../shared/lmsSync'
+import { normalizeStudentName, resolveUniqueNameMatch } from '../../shared/lmsSync'
 
 const BASE_URL = 'https://lms.mindx.edu.vn'
 const TIMEOUT = 30_000
@@ -256,6 +256,16 @@ export class LmsAutomator {
 
   async postSession(params: LmsPostParams): Promise<LmsPostResult> {
     return this.workflowMutex.runExclusive(() => this.postSessionUnlocked(params))
+  }
+
+  async runPostSessionExclusive<T>(
+    operation: (
+      postSession: (params: LmsPostParams) => Promise<LmsPostResult>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.workflowMutex.runExclusive(
+      () => operation(params => this.postSessionUnlocked(params)),
+    )
   }
 
   private async postSessionUnlocked(params: LmsPostParams): Promise<LmsPostResult> {
@@ -582,7 +592,7 @@ export class LmsAutomator {
 
       const studentName = ((await row.locator('.name-display').first().textContent()) ?? '').trim()
       if (!studentName) continue
-      const studentKey = studentName.toLocaleLowerCase('vi')
+      const studentKey = normalizeStudentName(studentName)
       if (seenStudents.has(studentKey)) continue
       seenStudents.add(studentKey)
 

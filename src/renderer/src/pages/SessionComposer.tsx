@@ -42,6 +42,7 @@ export default function SessionComposer(
   const [config, setConfig] = useState<AppConfig | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [configError, setConfigError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [rewritingAll, setRewritingAll] = useState(false)
   const [extractingPdf, setExtractingPdf] = useState(false)
@@ -65,10 +66,11 @@ export default function SessionComposer(
     setContentLoading(true)
     setConfigLoading(true)
     setConfig(null)
+    setConfigError(null)
     void window.api.getConfig().then(loadedConfig => {
       if (active) setConfig(loadedConfig)
     }).catch(err => {
-      if (active) setError((err as Error).message)
+      if (active) setConfigError((err as Error).message)
     }).finally(() => {
       if (!active) return
       configLoadingRef.current = false
@@ -281,7 +283,9 @@ export default function SessionComposer(
           <span className="text-muted">· {formatSessionDate(session.dateTime) || 'buổi học'}</span>
         </div>
       </div>
-      {error && <p className="alert alert-error" role="alert">{error}</p>}
+      {(configError ?? error) && (
+        <p className="alert alert-error" role="alert">{configError ?? error}</p>
+      )}
 
       <section className="section">
         <h3>Nội dung bài học</h3>

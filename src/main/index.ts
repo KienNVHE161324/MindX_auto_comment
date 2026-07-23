@@ -58,6 +58,7 @@ function startAutoSendScheduler(): void {
       return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
     },
     lmsPostSession: (params) => lmsAutomator.postSession(params),
+    runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
     writeZaloMessage: writeZaloMessageToDocuments(app.getPath('documents')),
     log: (msg) => console.log(msg),
   })

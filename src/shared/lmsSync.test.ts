@@ -5,6 +5,7 @@ import {
   matchStudentByName,
   mergeAbsentStudentNames,
   mergeContentResult,
+  normalizeStudentName,
 } from './lmsSync'
 import { SchoolClass, ClassSession, LmsContentResult } from './types'
 
@@ -85,6 +86,12 @@ describe('matchStudentByName', () => {
 
     expect(matchStudentByName(ambiguous, 'An')).toBeUndefined()
     expect(matchStudentByName(ambiguous, 'Văn An')?.id).toBe('s1')
+  })
+})
+
+describe('normalizeStudentName', () => {
+  it('trim, lowercase và collapse whitespace để duplicate key nhất quán', () => {
+    expect(normalizeStudentName('  NGUYỄN   VĂN\nAN  ')).toBe('nguyễn văn an')
   })
 })
 

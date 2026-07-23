@@ -160,6 +160,21 @@ describe('SessionComposer', () => {
     expect(screen.getByRole('button', { name: /xem trước zalo/i })).toBeDisabled()
   })
 
+  it('không xóa lỗi config khi thao tác không liên quan thành công', async () => {
+    const api = stub({
+      getConfig: vi.fn(async () => { throw new Error('Không tải được cấu hình') }),
+      extractLessonFromPdf: vi.fn(async () => 'Bài PDF'),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Không tải được cấu hình')
+
+    fireEvent.click(screen.getByRole('button', { name: /nạp PDF/i }))
+    await waitFor(() => expect(api.extractLessonFromPdf).toHaveBeenCalledOnce())
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Không tải được cấu hình')
+    expect(screen.getByRole('button', { name: /xem trước zalo/i })).toBeDisabled()
+  })
+
   it('"Nạp PDF & trích" điền nội dung bài học', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)

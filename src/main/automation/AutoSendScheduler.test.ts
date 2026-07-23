@@ -24,7 +24,7 @@ function makeContent(overrides: Partial<SessionContent> = {}): SessionContent {
 }
 
 function makeDeps(overrides: Partial<AutoSendDeps> = {}): AutoSendDeps {
-  return {
+  const deps = {
     getClasses: vi.fn(async () => [] as SchoolClass[]),
     getContent: vi.fn(async () => null),
     updateContentMetadata: vi.fn(async () => null),
@@ -36,7 +36,10 @@ function makeDeps(overrides: Partial<AutoSendDeps> = {}): AutoSendDeps {
     writeZaloMessage: vi.fn(async () => {}),
     now: () => now,
     ...overrides,
-  }
+  } as AutoSendDeps
+  deps.runLmsPostExclusive = overrides.runLmsPostExclusive
+    ?? (operation => operation(deps.lmsPostSession))
+  return deps
 }
 
 describe('AutoSendScheduler.tick', () => {
@@ -92,6 +95,39 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.updateContentMetadata).not.toHaveBeenCalled()
   })
 
+  it('đọc content bên trong shared LMS lock ngay trước post để không gửi plan stale', async () => {
+    let releaseExclusive!: () => void
+    const exclusiveBlocked = new Promise<void>(resolve => { releaseExclusive = resolve })
+    const zaloSentAt = '2026-07-17T18:00:00.000Z'
+    const initial = makeContent({ zaloSentAt })
+    const completed = makeContent({ postedToLms: true, zaloSentAt })
+    const getContent = vi.fn()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue(completed)
+    const enteredExclusive = vi.fn()
+    const runLmsPostExclusive: AutoSendDeps['runLmsPostExclusive'] = async <T,>(
+      operation: (postSession: AutoSendDeps['lmsPostSession']) => Promise<T>,
+    ): Promise<T> => {
+      enteredExclusive()
+      await exclusiveBlocked
+      return operation(deps.lmsPostSession)
+    }
+    const deps = makeDeps({
+      getClasses: vi.fn(async () => [makeCls()]),
+      getContent,
+      runLmsPostExclusive,
+    })
+    const pending = new AutoSendScheduler(deps).tick()
+
+    await vi.waitFor(() => expect(enteredExclusive).toHaveBeenCalledOnce())
+    expect(getContent).toHaveBeenCalledTimes(1)
+    releaseExclusive()
+    await pending
+
+    expect(getContent).toHaveBeenCalledTimes(2)
+    expect(deps.lmsPostSession).not.toHaveBeenCalled()
+  })
+
   it('lớp chưa bật autoSend -> không làm gì', async () => {
     const deps = makeDeps({
       getClasses: vi.fn(async () => [makeCls({ autoSend: { enabled: false, time: '18:00' } })]),
@@ -125,7 +161,7 @@ describe('AutoSendScheduler.tick', () => {
       absentStudentIds: [],
     })
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
-      zaloSentAt: expect.any(String),
+      zaloSentAt: now.toISOString(),
     })
   })
 
@@ -162,7 +198,7 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.writeZaloMessage).toHaveBeenCalled()
     expect(deps.updateContentMetadata).toHaveBeenCalledTimes(1)
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
-      zaloSentAt: expect.any(String),
+      zaloSentAt: now.toISOString(),
     })
   })
 
