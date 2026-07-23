@@ -1,7 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { SchoolClass, ClassSession, SessionContent, LmsPostParams, LmsPostResult, AppConfig } from '../../shared/types'
-import { planAutoSend, buildZaloMessage } from '../../shared/autoSend'
+import { planAutoSend, buildZaloMessage, normalizeAutoSend } from '../../shared/autoSend'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 import type { SessionContentMetadataPatch } from '../content/ContentRepository'
 
@@ -77,7 +77,8 @@ export class AutoSendScheduler {
   }
 
   private async processClass(cls: SchoolClass, now: Date, log: (msg: string) => void): Promise<void> {
-    if (!cls.autoSend?.enabled) return
+    const autoSend = normalizeAutoSend(cls.autoSend)
+    if (!autoSend.lmsEnabled && !autoSend.zaloEnabled) return
 
     // Lấy content của buổi gần nhất đã qua (nếu có) rồi để planAutoSend tự quyết định.
     const candidateSessionId = latestPastSessionId(cls, now)

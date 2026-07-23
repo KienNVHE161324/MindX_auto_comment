@@ -8,8 +8,11 @@ function makeCls(overrides: Partial<SchoolClass> = {}): SchoolClass {
   return {
     id: 'c1', code: 'A1', name: 'Lớp A1',
     students: [{ id: 's1', name: 'An' }],
-    sessions: [{ id: 'ss1', dateTime: '2026-07-10T14:00:00' }],
-    autoSend: { enabled: true, time: '18:00' },
+    sessions: [
+      { id: 'ss1', dateTime: '2026-07-10T14:00:00' },
+      { id: 'ss-future', dateTime: '2026-07-24T14:00:00' },
+    ],
+    autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: true },
     ...overrides,
   }
 }
@@ -133,7 +136,9 @@ describe('AutoSendScheduler.tick', () => {
 
   it('lớp chưa bật autoSend -> không làm gì', async () => {
     const deps = makeDeps({
-      getClasses: vi.fn(async () => [makeCls({ autoSend: { enabled: false, time: '18:00' } })]),
+      getClasses: vi.fn(async () => [makeCls({
+        autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
+      })]),
       getContent: vi.fn(async () => makeContent()),
     })
     await new AutoSendScheduler(deps).tick()
@@ -296,7 +301,14 @@ describe('AutoSendScheduler.tick', () => {
 
   it('1 lớp lỗi không chặn lớp khác', async () => {
     const clsA = makeCls({ id: 'c1', code: 'A1' })
-    const clsB = makeCls({ id: 'c2', code: 'B2', sessions: [{ id: 'ssB', dateTime: '2026-07-10T14:00:00' }] })
+    const clsB = makeCls({
+      id: 'c2',
+      code: 'B2',
+      sessions: [
+        { id: 'ssB', dateTime: '2026-07-10T14:00:00' },
+        { id: 'ssB-future', dateTime: '2026-07-24T14:00:00' },
+      ],
+    })
     const deps = makeDeps({
       getClasses: vi.fn(async () => [clsA, clsB]),
       getContent: vi.fn(async (sessionId: string) => (

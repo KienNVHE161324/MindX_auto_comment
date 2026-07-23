@@ -1,21 +1,35 @@
 import { StorageProvider } from '../storage/StorageProvider'
-import { SchoolClass } from '../../shared/types'
+import {
+  AutoSendConfig,
+  LegacyAutoSendConfig,
+  SchoolClass,
+} from '../../shared/types'
+import { normalizeAutoSend } from '../../shared/autoSend'
 
 const COLLECTION = 'classes'
+
+type PersistedSchoolClass = Omit<SchoolClass, 'autoSend'> & {
+  autoSend?: AutoSendConfig | LegacyAutoSendConfig
+}
+
+function normalizeClass(cls: PersistedSchoolClass): SchoolClass {
+  return { ...cls, autoSend: normalizeAutoSend(cls.autoSend) }
+}
 
 export class ClassRepository {
   constructor(private readonly storage: StorageProvider) {}
 
-  list(): Promise<SchoolClass[]> {
-    return this.storage.list<SchoolClass>(COLLECTION)
+  async list(): Promise<SchoolClass[]> {
+    return (await this.storage.list<PersistedSchoolClass>(COLLECTION)).map(normalizeClass)
   }
 
-  get(id: string): Promise<SchoolClass | null> {
-    return this.storage.read<SchoolClass>(COLLECTION, id)
+  async get(id: string): Promise<SchoolClass | null> {
+    const cls = await this.storage.read<PersistedSchoolClass>(COLLECTION, id)
+    return cls ? normalizeClass(cls) : null
   }
 
   save(cls: SchoolClass): Promise<void> {
-    return this.storage.write(COLLECTION, cls.id, cls)
+    return this.storage.write(COLLECTION, cls.id, normalizeClass(cls))
   }
 
   delete(id: string): Promise<void> {

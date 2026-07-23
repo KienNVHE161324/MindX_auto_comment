@@ -180,8 +180,11 @@ describe('createIpcHandlers — LMS automation', () => {
       code: 'A1',
       name: 'Lớp A1',
       students: [{ id: 's1', name: 'An' }],
-      sessions: [{ id: 'ss1', dateTime: '2026-07-20T18:00:00' }],
-      autoSend: { enabled: true, time: '18:00' },
+      sessions: [
+        { id: 'ss1', dateTime: '2026-07-20T18:00:00' },
+        { id: 'ss-future', dateTime: '2026-07-27T18:00:00' },
+      ],
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: true },
     }
     let stored = content
     let releaseSave!: () => void

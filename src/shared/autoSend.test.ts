@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { nearestPastSession, isAutoSendDue, planAutoSend, buildZaloMessage } from './autoSend'
+import {
+  nearestPastSession,
+  normalizeAutoSend,
+  scheduledAt,
+  planAutoSend,
+  buildZaloMessage,
+} from './autoSend'
 import { SchoolClass, ClassSession, SessionContent } from './types'
 
 describe('nearestPastSession', () => {
@@ -18,15 +24,42 @@ describe('nearestPastSession', () => {
   })
 })
 
-describe('isAutoSendDue', () => {
-  it('now sau giờ hẹn cùng ngày -> true', () => {
-    expect(isAutoSendDue('18:00', new Date('2026-07-17T19:00:00'))).toBe(true)
+describe('normalizeAutoSend', () => {
+  it('dữ liệu cũ enabled=true bật cả LMS và Zalo', () => {
+    expect(normalizeAutoSend({ enabled: true, time: '18:30' })).toEqual({
+      time: '18:30',
+      lmsEnabled: true,
+      zaloEnabled: true,
+    })
   })
-  it('now trước giờ hẹn cùng ngày -> false', () => {
-    expect(isAutoSendDue('18:00', new Date('2026-07-17T17:00:00'))).toBe(false)
+
+  it('dữ liệu cũ enabled=false tắt cả LMS và Zalo', () => {
+    expect(normalizeAutoSend({ enabled: false, time: '18:30' })).toEqual({
+      time: '18:30',
+      lmsEnabled: false,
+      zaloEnabled: false,
+    })
   })
-  it('sai định dạng giờ -> false', () => {
-    expect(isAutoSendDue('bad', new Date())).toBe(false)
+
+  it('lớp chưa cấu hình mặc định tắt hai kênh lúc 18:00', () => {
+    expect(normalizeAutoSend()).toEqual({
+      time: '18:00',
+      lmsEnabled: false,
+      zaloEnabled: false,
+    })
+  })
+})
+
+describe('scheduledAt', () => {
+  const session = { id: 'ss1', dateTime: '2026-07-20T14:00:00' }
+
+  it('dùng ngày của buổi học thay vì ngày hiện tại', () => {
+    expect(scheduledAt(session, '18:30')?.toISOString())
+      .toBe(new Date('2026-07-20T18:30:00').toISOString())
+  })
+
+  it('giờ sai định dạng -> null', () => {
+    expect(scheduledAt(session, '25:00')).toBeNull()
   })
 })
 
@@ -34,19 +67,32 @@ describe('planAutoSend', () => {
   const now = new Date('2026-07-17T19:00:00')
   const cls: SchoolClass = {
     id: 'c1', code: 'A1', name: 'A1', students: [{ id: 's1', name: 'An' }],
-    sessions: [{ id: 'ss1', dateTime: '2026-07-10T14:00:00' }],
-    autoSend: { enabled: true, time: '18:00' },
+    sessions: [
+      { id: 'ss1', dateTime: '2026-07-10T14:00:00' },
+      { id: 'ss2', dateTime: '2026-07-24T14:00:00' },
+    ],
+    autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: true },
   }
   const content: SessionContent = {
     id: 'ss1', classId: 'c1', sessionId: 'ss1', lessonContent: 'x', homework: '', comments: [],
   }
 
   it('chưa bật autoSend -> null', () => {
-    expect(planAutoSend({ ...cls, autoSend: { enabled: false, time: '18:00' } }, content, now)).toBeNull()
+    expect(planAutoSend({
+      ...cls,
+      autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
+    }, content, now)).toBeNull()
   })
 
   it('chưa tới giờ hẹn -> null', () => {
-    expect(planAutoSend(cls, content, new Date('2026-07-17T10:00:00'))).toBeNull()
+    expect(planAutoSend(cls, content, new Date('2026-07-10T17:00:00'))).toBeNull()
+  })
+
+  it('lớp đã kết thúc -> null', () => {
+    expect(planAutoSend({
+      ...cls,
+      sessions: [{ id: 'ss1', dateTime: '2026-07-10T14:00:00' }],
+    }, content, now)).toBeNull()
   })
 
   it('chưa có content -> null', () => {
@@ -70,6 +116,15 @@ describe('planAutoSend', () => {
     })
   })
 
+  it('cấu hình chỉ LMS -> không lập kế hoạch Zalo', () => {
+    expect(planAutoSend({
+      ...cls,
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
+    }, content, now)).toEqual({
+      session: cls.sessions[0], content, needLms: true, needZalo: false,
+    })
+  })
+
   it('buổi #4 (bị chặn LMS) -> needLms=false, chỉ gửi Zalo', () => {
     // 4 buổi đã qua, buổi gần nhất là #4 → bị chặn LMS
     const blockedCls: SchoolClass = {
@@ -79,6 +134,7 @@ describe('planAutoSend', () => {
         { id: 's2', dateTime: '2026-07-03T14:00:00' },
         { id: 's3', dateTime: '2026-07-05T14:00:00' },
         { id: 's4', dateTime: '2026-07-10T14:00:00' },
+        { id: 's5', dateTime: '2026-07-24T14:00:00' },
       ],
     }
     const c4: SessionContent = { ...content, id: 's4', sessionId: 's4' }

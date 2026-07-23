@@ -33,8 +33,14 @@ export interface ClassSession {
 }
 
 export interface AutoSendConfig {
+  time: string
+  lmsEnabled: boolean
+  zaloEnabled: boolean
+}
+
+/** Dạng dữ liệu đã lưu trước khi tách công tắc LMS/Zalo. */
+export interface LegacyAutoSendConfig {
   enabled: boolean
-  /** Giờ hẹn gửi tự động mỗi ngày, định dạng 'HH:mm' (24h) */
   time: string
 }
 

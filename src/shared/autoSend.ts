@@ -1,6 +1,13 @@
-import { SchoolClass, ClassSession, SessionContent } from './types'
+import {
+  AutoSendConfig,
+  LegacyAutoSendConfig,
+  SchoolClass,
+  ClassSession,
+  SessionContent,
+} from './types'
 import { fillTemplate, formatCommentLines, formatSessionDate } from './zaloTemplate'
 import { isLmsBlockedSession } from './sessionContent'
+import { getClassStatus } from './classStatus'
 
 /** Buổi học gần nhất có dateTime < now (không phụ thuộc trạng thái nội dung). */
 export function nearestPastSession(sessions: ClassSession[], now: Date = new Date()): ClassSession | undefined {
@@ -10,13 +17,29 @@ export function nearestPastSession(sessions: ClassSession[], now: Date = new Dat
   return past[0]
 }
 
-/** Đã tới hoặc qua giờ hẹn 'HH:mm' của ngày hôm nay (theo giờ máy). */
-export function isAutoSendDue(time: string, now: Date = new Date()): boolean {
-  const m = time.match(/^(\d{2}):(\d{2})$/)
-  if (!m) return false
-  const scheduled = new Date(now)
-  scheduled.setHours(Number(m[1]), Number(m[2]), 0, 0)
-  return now >= scheduled
+export function normalizeAutoSend(
+  value?: AutoSendConfig | LegacyAutoSendConfig,
+): AutoSendConfig {
+  if (!value) {
+    return { time: '18:00', lmsEnabled: false, zaloEnabled: false }
+  }
+  if ('enabled' in value) {
+    return {
+      time: value.time,
+      lmsEnabled: value.enabled,
+      zaloEnabled: value.enabled,
+    }
+  }
+  return value
+}
+
+/** Thời điểm hẹn theo ngày địa phương của chính buổi học. */
+export function scheduledAt(session: ClassSession, time: string): Date | null {
+  const match = time.match(/^([01]\d|2[0-3]):([0-5]\d)$/)
+  const date = session.dateTime.slice(0, 10)
+  if (!match || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  const result = new Date(`${date}T${match[1]}:${match[2]}:00`)
+  return Number.isNaN(result.getTime()) ? null : result
 }
 
 export interface AutoSendPlan {
@@ -32,16 +55,21 @@ export interface AutoSendPlan {
  * hoặc đã gửi xong cả hai kênh.
  */
 export function planAutoSend(cls: SchoolClass, content: SessionContent | null, now: Date = new Date()): AutoSendPlan | null {
-  if (!cls.autoSend?.enabled) return null
-  if (!isAutoSendDue(cls.autoSend.time, now)) return null
+  if (getClassStatus(cls.sessions, now) !== 'đang diễn ra') return null
+  const config = normalizeAutoSend(cls.autoSend)
+  if (!config.lmsEnabled && !config.zaloEnabled) return null
 
   const session = nearestPastSession(cls.sessions, now)
   if (!session) return null
   if (!content) return null
+  const due = scheduledAt(session, config.time)
+  if (!due || now < due) return null
 
   // Buổi #4/#9 có cơ chế đặc biệt → chặn gửi LMS (phase sau mới xử lý)
-  const needLms = !content.postedToLms && !isLmsBlockedSession(cls.sessions, session.id)
-  const needZalo = !content.zaloSentAt
+  const needLms = config.lmsEnabled
+    && !content.postedToLms
+    && !isLmsBlockedSession(cls.sessions, session.id)
+  const needZalo = config.zaloEnabled && !content.zaloSentAt
   if (!needLms && !needZalo) return null
 
   return { session, content, needLms, needZalo }
