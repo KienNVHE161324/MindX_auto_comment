@@ -43,6 +43,40 @@ describe('createIpcHandlers', () => {
     const api = createIpcHandlers(deps as never)
     expect(await api.pickFolder()).toBe('/chosen')
   })
+
+  it('ủy quyền đọc và chạy danh sách gửi bù', async () => {
+    const item = {
+      classId: 'c1',
+      classCode: 'A1',
+      className: 'Lớp A1',
+      sessionId: 'ss1',
+      sessionDateTime: '2026-07-20T18:00:00',
+      channels: ['lms' as const],
+    }
+    const result = {
+      classId: 'c1',
+      classCode: 'A1',
+      sessionId: 'ss1',
+      status: 'success' as const,
+      completedChannels: ['lms' as const],
+      message: 'Đã gửi.',
+    }
+    const getAutoSendCatchUp = vi.fn(() => [item])
+    const runAutoSendCatchUp = vi.fn(async () => [result])
+    const api = createIpcHandlers({
+      ...makeDeps(),
+      getAutoSendCatchUp,
+      runAutoSendCatchUp,
+    } as never) as ReturnType<typeof createIpcHandlers> & {
+      getAutoSendCatchUp: typeof getAutoSendCatchUp
+      runAutoSendCatchUp: typeof runAutoSendCatchUp
+    }
+
+    expect(await api.getAutoSendCatchUp()).toEqual([item])
+    expect(await api.runAutoSendCatchUp()).toEqual([result])
+    expect(getAutoSendCatchUp).toHaveBeenCalledOnce()
+    expect(runAutoSendCatchUp).toHaveBeenCalledOnce()
+  })
 })
 
 describe('createIpcHandlers — class methods', () => {

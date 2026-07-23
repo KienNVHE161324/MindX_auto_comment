@@ -196,6 +196,8 @@ export const IPC = {
   lmsPostSession: 'lms:postSession',
   lmsPostSessionAndSave: 'lms:postSessionAndSave',
   lmsSyncAll: 'lms:syncAll',
+  autoSendGetCatchUp: 'autoSend:getCatchUp',
+  autoSendRunCatchUp: 'autoSend:runCatchUp',
 } as const
 
 export interface AppApi {
@@ -219,4 +221,6 @@ export interface AppApi {
     request: LmsPostSessionAndSaveRequest,
   ): Promise<LmsPostSessionAndSaveResult>
   lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
+  getAutoSendCatchUp(): Promise<AutoSendCatchUpItem[]>
+  runAutoSendCatchUp(): Promise<AutoSendCatchUpResult[]>
 }

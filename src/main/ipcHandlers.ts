@@ -1,6 +1,7 @@
 import {
   AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent,
   LmsPostParams, LmsPostResult, LmsContentTarget, LmsSyncAllResult,
+  AutoSendCatchUpItem, AutoSendCatchUpResult,
 } from '../shared/types'
 import { ConfigStore } from './config/configStore'
 import { ClassRepository } from './classes/ClassRepository'
@@ -24,6 +25,8 @@ export interface IpcDeps {
     ) => Promise<T>,
   ): Promise<T>
   lmsSyncAll: (params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }) => Promise<LmsSyncAllResult>
+  getAutoSendCatchUp: () => AutoSendCatchUpItem[]
+  runAutoSendCatchUp: () => Promise<AutoSendCatchUpResult[]>
 }
 
 function mergeStoredMetadata(
@@ -92,5 +95,7 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
       return { postResult, content: persisted ?? updated }
     }),
     lmsSyncAll: (params) => deps.lmsSyncAll(params),
+    getAutoSendCatchUp: async () => deps.getAutoSendCatchUp(),
+    runAutoSendCatchUp: () => deps.runAutoSendCatchUp(),
   }
 }

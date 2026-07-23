@@ -19,6 +19,8 @@ const api: AppApi = {
   lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
   lmsPostSessionAndSave: (request) => ipcRenderer.invoke(IPC.lmsPostSessionAndSave, request),
   lmsSyncAll: (params) => ipcRenderer.invoke(IPC.lmsSyncAll, params),
+  getAutoSendCatchUp: () => ipcRenderer.invoke(IPC.autoSendGetCatchUp),
+  runAutoSendCatchUp: () => ipcRenderer.invoke(IPC.autoSendRunCatchUp),
 }
 
 contextBridge.exposeInMainWorld('api', api)

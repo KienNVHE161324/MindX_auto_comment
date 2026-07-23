@@ -46,8 +46,8 @@ const getContentRepository = async (): Promise<ContentRepository> => {
   return new ContentRepository(createStorageProvider(cfg))
 }
 
-function startAutoSendScheduler(): void {
-  const scheduler = new AutoSendScheduler({
+function createAutoSendScheduler(): AutoSendScheduler {
+  return new AutoSendScheduler({
     getClasses: async () => (await getRepository()).list(),
     getContent: async (sessionId) => (await getContentRepository()).get(sessionId),
     updateContentMetadata: async (sessionId, patch) =>
@@ -62,11 +62,13 @@ function startAutoSendScheduler(): void {
     writeZaloMessage: writeZaloMessageToDocuments(app.getPath('documents')),
     log: (msg) => console.log(msg),
   })
-  void scheduler.tick()
+}
+
+function startAutoSendTimer(scheduler: AutoSendScheduler): void {
   setInterval(() => { void scheduler.tick() }, AUTO_SEND_INTERVAL_MS)
 }
 
-function registerIpc(): void {
+function registerIpc(scheduler: AutoSendScheduler): void {
   const pickFolder = async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
@@ -117,6 +119,8 @@ function registerIpc(): void {
     lmsPostSession: (params) => lmsAutomator.postSession(params),
     runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
     lmsSyncAll: (params) => lmsAutomator.syncAll(params.existingCodes, params.contentTargets),
+    getAutoSendCatchUp: () => scheduler.getCatchUpItems(),
+    runAutoSendCatchUp: () => scheduler.runCatchUp(),
   })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
@@ -139,12 +143,21 @@ function registerIpc(): void {
     (_e, request) => handlers.lmsPostSessionAndSave(request),
   )
   ipcMain.handle(IPC.lmsSyncAll, (_e, params) => handlers.lmsSyncAll(params))
+  ipcMain.handle(IPC.autoSendGetCatchUp, () => handlers.getAutoSendCatchUp())
+  ipcMain.handle(IPC.autoSendRunCatchUp, () => handlers.runAutoSendCatchUp())
 }
 
-app.whenReady().then(() => {
-  registerIpc()
+app.whenReady().then(async () => {
+  const scheduler = createAutoSendScheduler()
+  try {
+    await scheduler.initializeCatchUp()
+  } catch (err) {
+    console.error(`[AutoSend] Không khởi tạo được danh sách gửi bù: ${(err as Error).message}`)
+  }
+  registerIpc(scheduler)
   createWindow()
-  startAutoSendScheduler()
+  startAutoSendTimer(scheduler)
+  void scheduler.tick()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
