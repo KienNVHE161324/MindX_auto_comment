@@ -7,6 +7,7 @@ import {
   SchoolClass,
   SessionContent,
   LmsPostParams,
+  LmsPostResult,
   ZaloSendResult,
 } from '../shared/types'
 
@@ -326,17 +327,26 @@ describe('createIpcHandlers — Zalo Web', () => {
 
   function makeZaloDeps(stored: SessionContent = content) {
     let current = stored
+    const events: string[] = []
     const classRepo = { get: vi.fn(async () => cls) }
     const contentRepo = {
       get: vi.fn(async () => current),
       updateMetadata: vi.fn(async (_sessionId: string, patch: Partial<SessionContent>) => {
+        events.push(patch.zaloSentAt ? 'save-zalo' : 'save-lms')
         current = { ...current, ...patch }
         return current
       }),
     }
     const sendZaloMessage = vi.fn(
-      async (): Promise<ZaloSendResult> => ({ status: 'sent' }),
+      async (): Promise<ZaloSendResult> => {
+        events.push('zalo')
+        return { status: 'sent' }
+      },
     )
+    const lmsPostSession = vi.fn(async (): Promise<LmsPostResult> => {
+      events.push('lms')
+      return { posted: ['An'], skipped: [], absentStudentNames: [] }
+    })
     const common = makeDeps()
     const deps = {
       ...common,
@@ -346,14 +356,16 @@ describe('createIpcHandlers — Zalo Web', () => {
       },
       getRepository: vi.fn(async () => classRepo),
       getContentRepository: vi.fn(async () => contentRepo),
+      lmsPostSession,
+      runLmsPostExclusive: vi.fn(async operation => operation(lmsPostSession)),
       sendZaloMessage,
       now: () => new Date('2026-07-23T12:00:00.000Z'),
     }
-    return { deps, contentRepo, sendZaloMessage }
+    return { deps, contentRepo, sendZaloMessage, lmsPostSession, events }
   }
 
   it('reloads current data, sends and persists zaloSentAt only after sent', async () => {
-    const { deps, contentRepo, sendZaloMessage } = makeZaloDeps()
+    const { deps, contentRepo, sendZaloMessage, events } = makeZaloDeps()
     const api = createIpcHandlers(deps as never)
 
     const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
@@ -367,6 +379,27 @@ describe('createIpcHandlers — Zalo Web', () => {
     })
     expect(result.status).toBe('sent')
     expect(result.content.zaloSentAt).toBe('2026-07-23T12:00:00.000Z')
+    expect(events).toEqual(['lms', 'save-lms', 'zalo', 'save-zalo'])
+  })
+
+  it('blocks Zalo when an attending student was not posted', async () => {
+    const { deps, contentRepo, sendZaloMessage, lmsPostSession } = makeZaloDeps()
+    lmsPostSession.mockResolvedValue({
+      posted: [],
+      skipped: ['An (lỗi: timeout)'],
+      absentStudentNames: [],
+    })
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(result.status).toBe('blocked')
+    expect(result.message).toContain('An')
+    expect(sendZaloMessage).not.toHaveBeenCalled()
+    expect(contentRepo.updateMetadata).not.toHaveBeenCalledWith(
+      'ss1',
+      expect.objectContaining({ zaloSentAt: expect.any(String) }),
+    )
   })
 
   it('does not invoke Zalo when latest content is already sent', async () => {
@@ -393,6 +426,9 @@ describe('createIpcHandlers — Zalo Web', () => {
     const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
 
     expect(result.status).toBe('login-required')
-    expect(contentRepo.updateMetadata).not.toHaveBeenCalled()
+    expect(contentRepo.updateMetadata).not.toHaveBeenCalledWith(
+      'ss1',
+      expect.objectContaining({ zaloSentAt: expect.any(String) }),
+    )
   })
 })

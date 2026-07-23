@@ -9,6 +9,7 @@ import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { mergeAbsentStudentNames } from '../shared/lmsSync'
 import { buildZaloMessage } from '../shared/autoSend'
+import { assessLmsDelivery } from '../shared/lmsDelivery'
 import { ZALO_TEST_SEARCH_TERM } from './automation/ZaloDesktopAutomator'
 
 export interface IpcDeps {
@@ -42,6 +43,7 @@ function mergeStoredMetadata(
   const merged = { ...draft }
   const metadataKeys = [
     'absentStudentIds',
+    'lmsPostedStudentIds',
     'postedToLms',
     'zaloSentAt',
   ] as const
@@ -119,11 +121,53 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         } satisfies ZaloSendSessionResult
       }
 
+      const knownAbsent = new Set(content.absentStudentIds ?? [])
+      const postResult = await deps.runLmsPostExclusive(postSession => postSession({
+        classCode: cls.code,
+        sessionDate: session.dateTime.slice(0, 10),
+        lessonContent: content.lessonContent,
+        homework: content.homework,
+        comments: cls.students
+          .filter(student => !knownAbsent.has(student.id))
+          .map(student => {
+            const comment = content.comments.find(item => item.studentId === student.id)
+            return {
+              studentName: student.name,
+              text: comment?.polished || comment?.raw || '',
+            }
+          })
+          .filter(comment => comment.text.trim() !== ''),
+      }))
+      const assessment = assessLmsDelivery(cls.students, postResult, {
+        postedStudentIds: content.lmsPostedStudentIds,
+        absentStudentIds: content.absentStudentIds,
+      })
+      const lmsPersisted = await contentRepository.updateMetadata(
+        request.sessionId,
+        {
+          lmsPostedStudentIds: assessment.postedStudentIds,
+          absentStudentIds: assessment.absentStudentIds,
+          ...(assessment.complete ? { postedToLms: true } : {}),
+        },
+      )
+      const current = lmsPersisted ?? {
+        ...content,
+        lmsPostedStudentIds: assessment.postedStudentIds,
+        absentStudentIds: assessment.absentStudentIds,
+      }
+      if (!assessment.complete) {
+        return {
+          status: 'blocked',
+          message: `Không gửi Zalo vì LMS chưa hoàn tất: ${assessment.blockers.join(', ')}`,
+          content: current,
+        }
+      }
+
       const config = await deps.configStore.load()
       const message = buildZaloMessage(
         cls,
         session,
-        content,
+        current,
         config.zaloMessageTemplate,
       )
       const sendResult = await deps.sendZaloMessage({
@@ -131,7 +175,7 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         message,
       })
       if (sendResult.status === 'login-required') {
-        return { ...sendResult, content }
+        return { ...sendResult, content: current }
       }
 
       const zaloSentAt = deps.now().toISOString()
@@ -139,7 +183,7 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         request.sessionId,
         { zaloSentAt },
       )
-      const updated = persisted ?? { ...content, zaloSentAt }
+      const updated = persisted ?? { ...current, zaloSentAt }
       return {
         status: 'sent',
         message: 'Đã gửi Zalo.',

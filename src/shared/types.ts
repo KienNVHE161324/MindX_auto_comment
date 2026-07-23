@@ -67,6 +67,8 @@ export interface SessionContent {
   homework: string
   comments: StudentComment[]
   absentStudentIds?: string[]
+  /** Học sinh đã được LMS xác nhận lưu nhận xét thành công. */
+  lmsPostedStudentIds?: string[]
   /** true khi đã gửi lên LMS thành công (có HS được nhận xét, không lỗi) */
   postedToLms?: boolean
   /** ISO timestamp khi tin Zalo đã được gửi tự động (ghi file/gửi thật) */
@@ -83,7 +85,7 @@ export interface ZaloSendSessionRequest {
 }
 
 export interface ZaloSendSessionResult {
-  status: 'sent' | 'already-sent' | 'login-required'
+  status: 'sent' | 'already-sent' | 'login-required' | 'blocked'
   message: string
   content: SessionContent
 }

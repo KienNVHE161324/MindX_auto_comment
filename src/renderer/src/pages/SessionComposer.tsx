@@ -309,10 +309,14 @@ export default function SessionComposer(
         classId: cls.id,
         sessionId: session.id,
       })
-      setContent(reconcileContentWithRoster(cls, result.content))
+      const reconciled = reconcileContentWithRoster(cls, result.content)
+      setContent(reconciled)
+      if (config) {
+        setPreview(buildZaloMessage(cls, session, reconciled, config.zaloMessageTemplate))
+      }
       setZaloStatus({
         message: result.message,
-        success: result.status !== 'login-required',
+        success: result.status === 'sent' || result.status === 'already-sent',
       })
       setError(null)
     } catch (err) {
@@ -503,7 +507,7 @@ export default function SessionComposer(
                 onClick={() => void sendToZalo()}
                 disabled={contentLocked}
               >
-                {zaloPosting ? 'Đang gửi Zalo...' : 'Gửi Zalo'}
+                {zaloPosting ? 'Đang gửi LMS & Zalo...' : 'Gửi LMS & Zalo'}
               </button>
             </div>
           </div>
