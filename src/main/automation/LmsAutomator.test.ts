@@ -9,6 +9,7 @@ import {
   getLmsSectionEditorSelector,
   getAbsentStudentPattern,
   getLmsOverwriteAction,
+  getStudentCommentManualActiveSelector,
   getStudentCommentManualModeSelector,
   isStudentCommentSaveConfirmed,
   getStudentCommentEditorSelector,
@@ -129,14 +130,31 @@ describe('getStudentCommentEditorSelector', () => {
 })
 
 describe('getStudentCommentManualModeSelector', () => {
-  it('nhắm nút chuyển popup nhận xét sang manual mode', () => {
+  it('nhắm nút chuyển popup sang manual mode ở cả LMS tiếng Anh và tiếng Việt', () => {
     expect(getStudentCommentManualModeSelector()).toBe(
-      '[aria-label="In by-areas mode, click to switch to manual mode"]',
+      [
+        '[aria-label="In by-areas mode, click to switch to manual mode"]',
+        '[aria-label="Đang ở chế độ nhận xét theo các tiêu chí, click để chuyển sang nhận xét tự do"]',
+      ].join(', '),
+    )
+  })
+})
+
+describe('getStudentCommentManualActiveSelector', () => {
+  it('nhận biết switch đã ở chế độ nhận xét tự do', () => {
+    expect(getStudentCommentManualActiveSelector()).toBe(
+      'input.MuiSwitch-input[type="checkbox"]:checked',
     )
   })
 })
 
 describe('isStudentCommentSaveConfirmed', () => {
+  it('xác nhận đã lưu khi editor quay về trạng thái hiển thị dù popup còn mở', async () => {
+    const saved = await isStudentCommentSaveConfirmed(async () => {})
+
+    expect(saved).toBe(true)
+  })
+
   it('không xác nhận đã lưu khi popup không tự đóng sau Save', async () => {
     const saved = await isStudentCommentSaveConfirmed(async () => {
       throw new Error('popup remained open')

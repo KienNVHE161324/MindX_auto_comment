@@ -52,7 +52,14 @@ export function getStudentCommentEditorSelector(): string {
 }
 
 export function getStudentCommentManualModeSelector(): string {
-  return '[aria-label="In by-areas mode, click to switch to manual mode"]'
+  return [
+    '[aria-label="In by-areas mode, click to switch to manual mode"]',
+    '[aria-label="Đang ở chế độ nhận xét theo các tiêu chí, click để chuyển sang nhận xét tự do"]',
+  ].join(', ')
+}
+
+export function getStudentCommentManualActiveSelector(): string {
+  return 'input.MuiSwitch-input[type="checkbox"]:checked'
 }
 
 export async function isStudentCommentSaveConfirmed(
@@ -626,17 +633,28 @@ export class LmsAutomator {
         popup = activePopup
         await activePopup.waitFor({ state: 'visible', timeout: 8000 })
 
+        // DOM thật có hai bước: chuyển sang nhận xét tự do trước, sau đó click
+        // vùng nội dung để LMS mở Quill editor.
+        const manualMode = activePopup.locator(getStudentCommentManualModeSelector()).first()
+        if ((await manualMode.count()) > 0 && await manualMode.isVisible()) {
+          await manualMode.click({ timeout: 5000 })
+          await activePopup
+            .locator(getStudentCommentManualActiveSelector())
+            .waitFor({ state: 'attached', timeout: 5000 })
+        }
+
         // Luôn thay nội dung cũ bằng bản mới trong app; chỉ bỏ qua khi bản mới trống.
         const commentArea = activePopup.locator('table td p').first()
         await commentArea.click({ timeout: 5000 })
 
-        const manualMode = activePopup.locator(getStudentCommentManualModeSelector()).first()
-        if ((await manualMode.count()) > 0 && await manualMode.isVisible()) {
-          await manualMode.click({ timeout: 5000 })
-        }
-
         const editor = activePopup.locator(getStudentCommentEditorSelector()).first()
-        await editor.waitFor({ state: 'visible', timeout: 8000 })
+        try {
+          await editor.waitFor({ state: 'visible', timeout: 8000 })
+        } catch {
+          const debugPath = path.join(this.debugDir, 'lms-student-comment-editor-debug.html')
+          fs.writeFileSync(debugPath, await page.content(), 'utf8')
+          throw new Error(`LMS không mở editor nhận xét tự do. HTML debug: ${debugPath}`)
+        }
         await editor.fill(commentData.text)
 
         const written = ((await editor.innerText().catch(() => '')) ?? '').trim()
@@ -649,10 +667,16 @@ export class LmsAutomator {
         const save = activePopup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
         await save.click({ timeout: 5000 })
         const saved = await isStudentCommentSaveConfirmed(() =>
-          activePopup.waitFor({ state: 'hidden', timeout: 5000 }),
+          editor.waitFor({ state: 'hidden', timeout: 8000 }),
         )
         if (!saved) {
-          throw new Error('LMS không xác nhận đã lưu nhận xét: popup vẫn đang mở.')
+          const debugPath = path.join(this.debugDir, 'lms-student-comment-save-debug.html')
+          fs.writeFileSync(debugPath, await page.content(), 'utf8')
+          throw new Error(`LMS không xác nhận đã lưu nhận xét. HTML debug: ${debugPath}`)
+        }
+        if (await activePopup.isVisible().catch(() => false)) {
+          await page.keyboard.press('Escape')
+          await activePopup.waitFor({ state: 'hidden', timeout: 5000 })
         }
         await page.waitForTimeout(300)
         posted.push(studentName)
