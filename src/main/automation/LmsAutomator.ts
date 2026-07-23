@@ -62,6 +62,21 @@ export function getStudentCommentManualActiveSelector(): string {
   return 'input.MuiSwitch-input[type="checkbox"]:checked'
 }
 
+export function getStudentCommentModeFromAriaLabel(
+  label: string | null,
+): 'area' | 'manual' | 'unknown' {
+  const normalized = (label ?? '').toLocaleLowerCase('vi')
+  if (
+    normalized.includes('đang ở chế độ nhận xét theo các tiêu chí')
+    || normalized.includes('by-areas mode')
+  ) return 'area'
+  if (
+    normalized.includes('đang ở chế độ nhận xét tự do')
+    || normalized.includes('manual mode')
+  ) return 'manual'
+  return 'unknown'
+}
+
 export async function isStudentCommentSaveConfirmed(
   waitForPopupToClose: () => Promise<void>,
 ): Promise<boolean> {
@@ -633,21 +648,22 @@ export class LmsAutomator {
         popup = activePopup
         await activePopup.waitFor({ state: 'visible', timeout: 8000 })
 
-        // DOM thật có hai bước: chuyển sang nhận xét tự do trước, sau đó click
-        // vùng nội dung để LMS mở Quill editor.
-        const manualMode = activePopup.locator(getStudentCommentManualModeSelector()).first()
-        if ((await manualMode.count()) > 0 && await manualMode.isVisible()) {
-          await manualMode.click({ timeout: 5000 })
-          await activePopup
-            .locator(getStudentCommentManualActiveSelector())
-            .waitFor({ state: 'attached', timeout: 5000 })
+        const editor = activePopup.locator(getStudentCommentEditorSelector()).first()
+        const modeToggle = activePopup
+          .locator('span[aria-label]:has(input.MuiSwitch-input)')
+          .first()
+        const mode = getStudentCommentModeFromAriaLabel(
+          await modeToggle.getAttribute('aria-label').catch(() => null),
+        )
+        console.log(`[LMS] ${studentName}: giữ nguyên comment mode ${mode}`)
+
+        // Area và Manual đều dùng Quill. Nếu popup đang ở trạng thái hiển thị,
+        // click vùng nhận xét để mở editor của chính mode hiện tại; không đổi switch.
+        if (!(await editor.isVisible().catch(() => false))) {
+          const commentArea = activePopup.locator('table td p').first()
+          await commentArea.click({ timeout: 5000 })
         }
 
-        // Luôn thay nội dung cũ bằng bản mới trong app; chỉ bỏ qua khi bản mới trống.
-        const commentArea = activePopup.locator('table td p').first()
-        await commentArea.click({ timeout: 5000 })
-
-        const editor = activePopup.locator(getStudentCommentEditorSelector()).first()
         try {
           await editor.waitFor({ state: 'visible', timeout: 8000 })
         } catch {

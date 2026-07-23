@@ -9,6 +9,7 @@ import {
   getLmsSectionEditorSelector,
   getAbsentStudentPattern,
   getLmsOverwriteAction,
+  getStudentCommentModeFromAriaLabel,
   getStudentCommentManualActiveSelector,
   getStudentCommentManualModeSelector,
   isStudentCommentSaveConfirmed,
@@ -145,6 +146,21 @@ describe('getStudentCommentManualActiveSelector', () => {
     expect(getStudentCommentManualActiveSelector()).toBe(
       'input.MuiSwitch-input[type="checkbox"]:checked',
     )
+  })
+})
+
+describe('getStudentCommentModeFromAriaLabel', () => {
+  it('nhận biết mode Area và Manual bằng nhãn tiếng Việt', () => {
+    expect(getStudentCommentModeFromAriaLabel(
+      'Đang ở chế độ nhận xét theo các tiêu chí, click để chuyển sang nhận xét tự do',
+    )).toBe('area')
+    expect(getStudentCommentModeFromAriaLabel(
+      'Đang ở chế độ nhận xét tự do, click để chuyển sang nhận xét theo các tiêu chí',
+    )).toBe('manual')
+  })
+
+  it('trả unknown khi LMS đổi nhãn ngoài các mode đã biết', () => {
+    expect(getStudentCommentModeFromAriaLabel('Chế độ khác')).toBe('unknown')
   })
 })
 
