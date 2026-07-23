@@ -201,8 +201,9 @@ it('selects the first result, clears draft, sends and verifies', async () => {
   expect(harness.searchInput.fill).toHaveBeenCalledWith('Dương')
   expect(harness.searchResults[0].click).toHaveBeenCalledOnce()
   expect(harness.searchResults[1].click).not.toHaveBeenCalled()
-  expect(harness.composer.fill).toHaveBeenNthCalledWith(1, '')
-  expect(harness.composer.fill).toHaveBeenNthCalledWith(2, 'Xin chào')
+  expect(harness.composer.press).toHaveBeenNthCalledWith(1, 'Control+A')
+  expect(harness.composer.press).toHaveBeenNthCalledWith(2, 'Backspace')
+  expect(harness.composer.type).toHaveBeenCalledWith('Xin chào')
   expect(harness.sendButton.click).toHaveBeenCalledOnce()
 })
 
@@ -238,14 +239,16 @@ Use stable selectors in one exported selector object so real DOM corrections sta
 
 ```ts
 export const ZALO_SELECTORS = {
-  loggedInShell: '#main-tab, #chat-box',
-  searchInput: 'input[placeholder*="Tìm kiếm"], input[placeholder*="Search"]',
-  searchResult: '[data-id="div_SearchResult"] [role="listitem"], .conv-item',
-  composer: '[contenteditable="true"][role="textbox"], #input_line_0',
-  sendButton: 'button[aria-label*="Gửi"], button[aria-label*="Send"]',
-  outgoingBubble: '.message.me, [data-from="me"]',
+  loggedInShell: '#contact-search-input',
+  searchInput: '#contact-search-input[data-id="txt_Main_Search"]',
+  searchResult: '.ReactVirtualized__List .conv-item[id^="friend-item-"], .ReactVirtualized__List .conv-item[id^="group-item-"]',
+  composer: '#chat-input-container-id #richInput',
+  sendButton: '#chat-input-container-id .send-msg-btn[data-translate-title="STR_SEND"]',
+  outgoingBubble: '.message-frame.me [data-id="div_SentMsg_Text"] .text',
 } as const
 ```
+
+These selectors come from the live HTML supplied on 2026-07-23. The search-result selector deliberately excludes `.search-message__item`, because Phase 3 must pick the first contact/group result instead of a historical message match.
 
 Implement `ensureContext()` with:
 
@@ -281,12 +284,14 @@ return this.workflowMutex.runExclusive(async () => {
   await results.nth(0).click()
 
   const composer = page.locator(ZALO_SELECTORS.composer)
-  await composer.fill('')
-  await composer.fill(input.message)
+  await composer.click()
+  await composer.press('Control+A')
+  await composer.press('Backspace')
+  await composer.type(input.message)
   await page.locator(ZALO_SELECTORS.sendButton).click()
 
   await composer.waitFor({ state: 'visible' })
-  if ((await composer.textContent())?.trim()) {
+  if (normalizeZaloMessage((await composer.innerText()) ?? '') !== '') {
     throw new Error('Zalo chưa xóa nội dung khỏi ô soạn sau khi gửi.')
   }
 
