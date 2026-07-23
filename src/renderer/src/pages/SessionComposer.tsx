@@ -3,8 +3,10 @@ import {
   SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG,
   LmsPostResult,
 } from '../../../shared/types'
-import { fillTemplate, formatCommentLines, formatSessionDate } from '../../../shared/zaloTemplate'
+import { formatSessionDate } from '../../../shared/zaloTemplate'
+import { buildZaloMessage } from '../../../shared/autoSend'
 import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
+import { mergeAbsentStudentNames } from '../../../shared/lmsSync'
 import { ArrowLeftIcon } from '../components/Icons'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
@@ -137,10 +139,26 @@ export default function SessionComposer(
       })
       setLmsResult(result)
 
-      if (!result.error && result.posted.length > 0) {
-        const posted = { ...content, postedToLms: true }
-        await window.api.saveContent(posted)
-        setContent(posted)
+      const absentStudentIds = mergeAbsentStudentNames(
+        cls.students,
+        content.absentStudentIds ?? [],
+        result.absentStudentNames,
+      )
+      const didPost = !result.error && result.posted.length > 0
+      const absenceChanged = absentStudentIds.length !== (content.absentStudentIds ?? []).length
+      if (didPost || absenceChanged) {
+        const updated: SessionContent = {
+          ...content,
+          absentStudentIds,
+          ...(didPost ? { postedToLms: true } : {}),
+        }
+        await window.api.saveContent(updated)
+        setContent(updated)
+        setPreview(current => (
+          current === null
+            ? null
+            : buildZaloMessage(cls, session, updated, config.zaloMessageTemplate)
+        ))
       }
     } catch (err) {
       setError((err as Error).message)
@@ -151,18 +169,7 @@ export default function SessionComposer(
   }
 
   const showPreview = (): void => {
-    const text = fillTemplate(config.zaloMessageTemplate, {
-      ten_lop: cls.name || cls.code,
-      ngay_buoi_hoc: formatSessionDate(session.dateTime),
-      noi_dung_bai_hoc: content.lessonContent,
-      danh_sach_nhan_xet: formatCommentLines(
-        cls.students
-          .filter(s => !isAbsent(s.id))
-          .map(s => ({ name: s.name, text: commentFor(s.id).polished || commentFor(s.id).raw })),
-      ),
-      bai_tap_ve_nha: content.homework,
-    })
-    setPreview(text)
+    setPreview(buildZaloMessage(cls, session, content, config.zaloMessageTemplate))
   }
 
   const save = async (): Promise<void> => {

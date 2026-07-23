@@ -124,7 +124,7 @@ describe('SessionComposer', () => {
     expect(screen.queryByText(/đã lưu/i)).not.toBeInTheDocument()
   })
 
-  it('loại học sinh nghỉ (absentStudentIds) khỏi tin Zalo xem trước', async () => {
+  it('hiển thị học sinh nghỉ (absentStudentIds) trong tin Zalo xem trước', async () => {
     const clsWithTwo: SchoolClass = {
       id: 'c1', code: 'A1', name: 'Lớp A1',
       students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
@@ -142,13 +142,13 @@ describe('SessionComposer', () => {
     fireEvent.click(screen.getByText(/xem trước/i))
     const pre = await screen.findByLabelText(/xem trước zalo/i)
     expect(pre.textContent).toContain('An: Ngoan')
-    expect(pre.textContent).not.toContain('Bình')
+    expect(pre.textContent).toContain('Bình: nghỉ')
   })
 
   it('gửi LMS thành công -> lưu content với postedToLms=true', async () => {
     const api = stub({
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
-      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
+      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [], absentStudentNames: [] })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByText(/gửi lên lms/i))
@@ -159,10 +159,62 @@ describe('SessionComposer', () => {
     ))
   })
 
+  it('chỉ dựng lại preview đang mở sau khi LMS trả kết quả và content đã lưu', async () => {
+    const clsWithTwo: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Nguyễn Sách Sâm' }],
+      sessions: [],
+    }
+    let resolveLms!: (result: {
+      posted: string[]
+      skipped: string[]
+      absentStudentNames: string[]
+    }) => void
+    const lmsResult = new Promise<{
+      posted: string[]
+      skipped: string[]
+      absentStudentNames: string[]
+    }>(resolve => { resolveLms = resolve })
+    let resolveSave!: () => void
+    const saveResult = new Promise<void>(resolve => { resolveSave = resolve })
+    const api = stub({
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(() => lmsResult),
+      saveContent: vi.fn(() => saveResult),
+    })
+    render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByLabelText(/^nhận xét An$/i))
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'Ngoan' } })
+    fireEvent.change(screen.getByLabelText(/nhận xét Nguyễn Sách Sâm/i), { target: { value: 'Chăm' } })
+    fireEvent.click(screen.getByText(/xem trước/i))
+    const pre = await screen.findByLabelText(/xem trước zalo/i)
+    expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
+
+    fireEvent.click(screen.getByText(/gửi lên lms/i))
+    await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalled())
+    expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
+
+    resolveLms({
+      posted: ['An'],
+      skipped: ['Nguyễn Sách Sâm'],
+      absentStudentNames: ['Sách Sâm'],
+    })
+    await waitFor(() => expect(api.saveContent).toHaveBeenCalledWith(
+      expect.objectContaining({ absentStudentIds: ['s2'], postedToLms: true }),
+    ))
+    expect(pre.textContent).toContain('Nguyễn Sách Sâm: Chăm')
+
+    resolveSave()
+    await waitFor(() => expect(pre.textContent).toContain('Nguyễn Sách Sâm: nghỉ'))
+    expect(pre.textContent).toContain('An: Ngoan')
+  })
+
   it('gửi LMS lỗi -> không đánh dấu postedToLms', async () => {
     const api = stub({
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
-      lmsPostSession: vi.fn(async () => ({ posted: [], skipped: [], error: 'Lỗi kết nối' })),
+      lmsPostSession: vi.fn(async () => ({
+        posted: [], skipped: [], absentStudentNames: [], error: 'Lỗi kết nối',
+      })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByText(/gửi lên lms/i))

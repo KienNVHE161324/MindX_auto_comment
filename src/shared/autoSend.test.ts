@@ -90,7 +90,7 @@ describe('planAutoSend', () => {
 })
 
 describe('buildZaloMessage', () => {
-  it('loại HS nghỉ, điền đúng template', () => {
+  it('hiển thị HS nghỉ với nhận xét "nghỉ", điền đúng template', () => {
     const cls: SchoolClass = {
       id: 'c1', code: 'A1', name: 'Lớp A1',
       students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
@@ -107,7 +107,7 @@ describe('buildZaloMessage', () => {
     expect(msg).toContain('Lớp Lớp A1')
     expect(msg).toContain('Phép cộng')
     expect(msg).toContain('An: ngoan')
-    expect(msg).not.toContain('Bình')
+    expect(msg).toContain('Bình: nghỉ')
     expect(msg).toContain('Làm bài 5')
   })
 })

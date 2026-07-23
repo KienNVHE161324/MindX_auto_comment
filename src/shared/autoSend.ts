@@ -63,9 +63,12 @@ export function buildZaloMessage(
     ngay_buoi_hoc: formatSessionDate(session.dateTime),
     noi_dung_bai_hoc: content.lessonContent,
     danh_sach_nhan_xet: formatCommentLines(
-      cls.students
-        .filter(s => !absentIds.has(s.id))
-        .map(s => ({ name: s.name, text: commentFor(s.id).polished || commentFor(s.id).raw })),
+      cls.students.map(s => ({
+        name: s.name,
+        text: absentIds.has(s.id)
+          ? 'nghỉ'
+          : commentFor(s.id).polished || commentFor(s.id).raw,
+      })),
     ),
     bai_tap_ve_nha: content.homework,
   })
