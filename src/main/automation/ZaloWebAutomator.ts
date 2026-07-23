@@ -32,6 +32,7 @@ interface ZaloLocator {
 export interface ZaloPage {
   goto(url: string): Promise<unknown>
   bringToFront(): Promise<void>
+  waitForTimeout(timeoutMs: number): Promise<void>
   locator(selector: string): ZaloLocator
   content(): Promise<string>
   screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>
@@ -105,12 +106,7 @@ export class ZaloWebAutomator {
           throw new Error('Zalo chưa xóa nội dung khỏi ô soạn sau khi gửi.')
         }
 
-        const outgoing = page.locator(ZALO_SELECTORS.outgoingBubble)
-        const outgoingCount = await outgoing.count()
-        const newest = outgoingCount > 0
-          ? await outgoing.nth(outgoingCount - 1).innerText()
-          : ''
-        if (normalizeZaloMessage(newest) !== normalizeZaloMessage(input.message)) {
+        if (!await this.waitForOutgoingMessage(page, input.message)) {
           throw new Error('Zalo không xác nhận được tin nhắn vừa gửi.')
         }
         return { status: 'sent' }
@@ -161,5 +157,22 @@ export class ZaloWebAutomator {
       path: join(this.profileDir, 'zalo-send-debug.png'),
       fullPage: true,
     })
+  }
+
+  private async waitForOutgoingMessage(
+    page: ZaloPage,
+    expectedMessage: string,
+  ): Promise<boolean> {
+    const expected = normalizeZaloMessage(expectedMessage)
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const outgoing = page.locator(ZALO_SELECTORS.outgoingBubble)
+      const count = await outgoing.count()
+      if (count > 0) {
+        const newest = await outgoing.nth(count - 1).innerText()
+        if (normalizeZaloMessage(newest) === expected) return true
+      }
+      await page.waitForTimeout(250)
+    }
+    return false
   }
 }

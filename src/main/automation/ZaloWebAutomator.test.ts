@@ -38,6 +38,7 @@ function createHarness() {
   const page = {
     goto: vi.fn(async () => {}),
     bringToFront: vi.fn(async () => {}),
+    waitForTimeout: vi.fn(async () => {}),
     content: vi.fn(async () => '<html></html>'),
     screenshot: vi.fn(async () => {}),
     locator: vi.fn((selector: string) => {
@@ -125,5 +126,26 @@ describe('Zalo Web helpers', () => {
     })).rejects.toThrow(/không xác nhận được/i)
     expect(harness.sendButton.click).toHaveBeenCalledOnce()
     expect(saveDebug).toHaveBeenCalledOnce()
+  })
+
+  it('waits for the outgoing bubble to render after send', async () => {
+    const harness = createHarness()
+    const delayedBubble = locator({
+      innerText: vi.fn()
+        .mockResolvedValueOnce('Tin cũ')
+        .mockResolvedValueOnce('Xin chào'),
+    })
+    harness.outgoing.nth.mockReturnValue(delayedBubble)
+    const automator = new ZaloWebAutomator('C:/tmp/zalo-test', {
+      pageFactory: async () => harness.page,
+      workflowMutex: new WorkflowMutex(),
+    })
+
+    await expect(automator.sendMessage({
+      searchTerm: 'Dương',
+      message: 'Xin chào',
+    })).resolves.toEqual({ status: 'sent' })
+    expect(harness.page.waitForTimeout).toHaveBeenCalled()
+    expect(harness.sendButton.click).toHaveBeenCalledOnce()
   })
 })
