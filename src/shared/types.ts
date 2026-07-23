@@ -73,6 +73,21 @@ export interface SessionContent {
   zaloSentAt?: string
 }
 
+export type ZaloSendResult =
+  | { status: 'sent' }
+  | { status: 'login-required'; message: string }
+
+export interface ZaloSendSessionRequest {
+  classId: string
+  sessionId: string
+}
+
+export interface ZaloSendSessionResult {
+  status: 'sent' | 'already-sent' | 'login-required'
+  message: string
+  content: SessionContent
+}
+
 export type AutoSendChannel = 'lms' | 'zalo'
 
 export interface AutoSendCatchUpItem {
