@@ -9,7 +9,7 @@ import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { mergeAbsentStudentNames } from '../shared/lmsSync'
 import { buildZaloMessage } from '../shared/autoSend'
-import { ZALO_TEST_SEARCH_TERM } from './automation/ZaloWebAutomator'
+import { ZALO_TEST_SEARCH_TERM } from './automation/ZaloDesktopAutomator'
 
 export interface IpcDeps {
   configStore: ConfigStore

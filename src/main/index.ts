@@ -9,7 +9,7 @@ import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { LmsAutomator } from './automation/LmsAutomator'
 import { AutoSendScheduler } from './automation/AutoSendScheduler'
-import { ZaloWebAutomator } from './automation/ZaloWebAutomator'
+import { createZaloDesktopAutomator } from './automation/ZaloDesktopAutomator'
 import { WorkflowMutex } from './automation/WorkflowMutex'
 import { IPC } from '../shared/types'
 
@@ -40,9 +40,12 @@ const lmsAutomator = new LmsAutomator(
   undefined,
   externalWorkflowMutex,
 )
-const zaloAutomator = new ZaloWebAutomator(
-  join(app.getPath('userData'), 'zalo-browser'),
-  { workflowMutex: externalWorkflowMutex },
+const zaloAutomator = createZaloDesktopAutomator(
+  app.isPackaged
+    ? join(process.resourcesPath, 'zalo-desktop-uia.ps1')
+    : join(app.getAppPath(), 'resources', 'zalo-desktop-uia.ps1'),
+  join(app.getPath('userData'), 'zalo-desktop-debug'),
+  externalWorkflowMutex,
 )
 
 const configStore = new ConfigStore(app.getPath('userData'))

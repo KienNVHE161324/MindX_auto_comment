@@ -19,7 +19,7 @@ import {
 } from '../../shared/autoSend'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 import type { SessionContentMetadataPatch } from '../content/ContentRepository'
-import { ZALO_TEST_SEARCH_TERM } from './ZaloWebAutomator'
+import { ZALO_TEST_SEARCH_TERM } from './ZaloDesktopAutomator'
 
 export interface AutoSendDeps {
   getClasses: () => Promise<SchoolClass[]>
