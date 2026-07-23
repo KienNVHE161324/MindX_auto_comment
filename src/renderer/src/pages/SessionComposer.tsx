@@ -29,29 +29,43 @@ export default function SessionComposer(
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [rewritingAll, setRewritingAll] = useState(false)
+  const [contentLoading, setContentLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [lmsPosting, setLmsPosting] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
+  const contentLoadingRef = useRef(true)
+  const savingRef = useRef(false)
   const lmsPostingRef = useRef(false)
 
   const sessionNum = getSessionNumber(cls.sessions, session.id)
   const lmsBlocked = isLmsBlockedSession(cls.sessions, session.id)
 
   useEffect(() => {
+    let active = true
+    contentLoadingRef.current = true
+    setContentLoading(true)
     void window.api.getConfig().then(setConfig)
     void window.api.getContent(session.id).then(existing => {
-      if (!existing || lmsPostingRef.current) return
+      if (!active || !existing) return
       // Đồng bộ nhận xét theo roster hiện tại: giữ nhận xét cũ của HS còn trong lớp,
       // thêm entry rỗng cho HS mới, loại nhận xét của HS đã bị xóa khỏi lớp.
       const comments = cls.students.map(
         s => existing.comments.find(c => c.studentId === s.id) ?? { studentId: s.id, raw: '', polished: '' },
       )
       setContent({ ...existing, comments })
+    }).catch(err => {
+      if (active) setError((err as Error).message)
+    }).finally(() => {
+      if (!active) return
+      contentLoadingRef.current = false
+      setContentLoading(false)
     })
+    return () => { active = false }
   }, [session.id, cls])
 
   const mutate = (updater: (prev: SessionContent) => SessionContent): void => {
-    if (lmsPostingRef.current) return
+    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
     setContent(updater)
     setSaved(false)
   }
@@ -110,7 +124,12 @@ export default function SessionComposer(
   const anyPolished = content.comments.some(c => c.polished)
 
   const postToLms = async (): Promise<void> => {
-    if (lmsBlocked || lmsPostingRef.current) return
+    if (
+      lmsBlocked
+      || contentLoadingRef.current
+      || savingRef.current
+      || lmsPostingRef.current
+    ) return
     lmsPostingRef.current = true
     setLmsPosting(true)
     setLmsResult(null)
@@ -177,14 +196,22 @@ export default function SessionComposer(
   }
 
   const save = async (): Promise<void> => {
+    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
+    savingRef.current = true
+    setSaving(true)
     try {
       await window.api.saveContent(content)
       setSaved(true)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      savingRef.current = false
+      setSaving(false)
     }
   }
+
+  const contentLocked = contentLoading || saving || lmsPosting
 
   return (
     <div className="page">
@@ -208,22 +235,22 @@ export default function SessionComposer(
             className="textarea"
             rows={6}
             value={content.lessonContent}
-            disabled={lmsPosting}
+            disabled={contentLocked}
             onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
           />
         </div>
-        <button className="btn btn-sm" onClick={loadPdf} disabled={lmsPosting}>Nạp PDF &amp; trích</button>
+        <button className="btn btn-sm" onClick={loadPdf} disabled={contentLocked}>Nạp PDF &amp; trích</button>
       </section>
 
       <section className="section">
         <div className="row-between" style={{ marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>Nhận xét học sinh</h3>
           <div className="btn-row">
-            <button className="btn btn-sm btn-primary" onClick={aiRewriteAll} disabled={lmsPosting || rewritingAll || cls.students.length === 0}>
+            <button className="btn btn-sm btn-primary" onClick={aiRewriteAll} disabled={contentLocked || rewritingAll || cls.students.length === 0}>
               {rewritingAll ? 'Đang sửa...' : 'Sửa tất cả bằng AI'}
             </button>
             {anyPolished && (
-              <button className="btn btn-sm btn-ghost" onClick={undoAllAi} disabled={lmsPosting}>Hoàn tác tất cả</button>
+              <button className="btn btn-sm btn-ghost" onClick={undoAllAi} disabled={contentLocked}>Hoàn tác tất cả</button>
             )}
           </div>
         </div>
@@ -247,7 +274,7 @@ export default function SessionComposer(
                   rows={2}
                   placeholder={absent ? 'Học sinh nghỉ — không gửi nhận xét' : 'Nhập nhận xét…'}
                   value={cm.polished || cm.raw}
-                  disabled={lmsPosting}
+                  disabled={contentLocked}
                   onChange={e => {
                     if (cm.polished) {
                       setComment(s.id, { polished: e.target.value })
@@ -271,7 +298,7 @@ export default function SessionComposer(
             className="textarea"
             rows={3}
             value={content.homework}
-            disabled={lmsPosting}
+            disabled={contentLocked}
             onChange={e => mutate(prev => ({ ...prev, homework: e.target.value }))}
           />
         </div>
@@ -279,10 +306,10 @@ export default function SessionComposer(
 
       <div className="action-bar">
         <button className="btn" onClick={showPreview}>Xem trước Zalo</button>
-        <button className="btn btn-primary" onClick={save} disabled={lmsPosting}>Lưu</button>
+        <button className="btn btn-primary" onClick={save} disabled={contentLocked}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={postToLms} disabled={lmsPosting || lmsBlocked}>
+        <button className="btn btn-primary" onClick={postToLms} disabled={contentLoading || saving || lmsPosting || lmsBlocked}>
           {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
       </div>

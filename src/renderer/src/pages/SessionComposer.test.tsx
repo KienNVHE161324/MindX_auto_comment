@@ -43,6 +43,71 @@ describe('SessionComposer', () => {
     await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Đã lưu'))
   })
 
+  it('chặn LMS và chỉnh sửa cho tới khi content đã lưu tải xong', async () => {
+    const clsWithTwo: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
+      sessions: [],
+    }
+    let resolveContent!: (content: {
+      id: string
+      classId: string
+      sessionId: string
+      lessonContent: string
+      homework: string
+      comments: { studentId: string; raw: string; polished: string }[]
+      absentStudentIds: string[]
+    }) => void
+    const storedContent = new Promise<{
+      id: string
+      classId: string
+      sessionId: string
+      lessonContent: string
+      homework: string
+      comments: { studentId: string; raw: string; polished: string }[]
+      absentStudentIds: string[]
+    }>(resolve => { resolveContent = resolve })
+    const api = stub({
+      getContent: vi.fn(() => storedContent),
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({
+        posted: ['An'], skipped: ['Bình'], absentStudentNames: ['Bình'],
+      })),
+    })
+    render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
+
+    const lmsButton = screen.getByRole('button', { name: /gửi lên lms/i })
+    expect(lmsButton).toBeDisabled()
+    expect(screen.getByLabelText(/nội dung bài học/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^lưu$/i })).toBeDisabled()
+    fireEvent.click(lmsButton)
+    expect(api.lmsPostSession).not.toHaveBeenCalled()
+
+    resolveContent({
+      id: 'ss1',
+      classId: 'c1',
+      sessionId: 'ss1',
+      lessonContent: 'Bài đã lưu',
+      homework: 'BT đã lưu',
+      comments: [
+        { studentId: 's1', raw: 'Ngoan', polished: '' },
+        { studentId: 's2', raw: 'Chăm', polished: '' },
+      ],
+      absentStudentIds: ['s2'],
+    })
+    await waitFor(() => expect(lmsButton).toBeEnabled())
+    expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài đã lưu')
+
+    fireEvent.click(lmsButton)
+    await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalledWith({
+      classCode: 'A1',
+      sessionDate: '2026-07-20',
+      lessonContent: 'Bài đã lưu',
+      homework: 'BT đã lưu',
+      comments: [{ studentName: 'An', text: 'Ngoan' }],
+    }))
+  })
+
   it('"Nạp PDF & trích" điền nội dung bài học', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
@@ -97,6 +162,33 @@ describe('SessionComposer', () => {
     fireEvent.click(screen.getByText(/^lưu$/i))
     await waitFor(() => expect(api.saveContent).toHaveBeenCalled())
     expect(screen.getByText(/đã lưu/i)).toBeInTheDocument()
+  })
+
+  it('chặn LMS trong khi thao tác Lưu đang pending', async () => {
+    let resolveSave!: () => void
+    const saveResult = new Promise<void>(resolve => { resolveSave = resolve })
+    const api = stub({
+      saveContent: vi.fn(() => saveResult),
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({
+        posted: ['An'], skipped: [], absentStudentNames: [],
+      })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    const saveButton = await screen.findByRole('button', { name: /^lưu$/i })
+    const lmsButton = screen.getByRole('button', { name: /gửi lên lms/i })
+    await waitFor(() => expect(saveButton).toBeEnabled())
+
+    fireEvent.click(saveButton)
+    await waitFor(() => expect(api.saveContent).toHaveBeenCalledTimes(1))
+    expect(lmsButton).toBeDisabled()
+    fireEvent.click(lmsButton)
+    expect(api.lmsPostSession).not.toHaveBeenCalled()
+
+    resolveSave()
+    await waitFor(() => expect(lmsButton).toBeEnabled())
+    fireEvent.click(lmsButton)
+    await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalledTimes(1))
   })
 
   it('đồng bộ nhận xét theo roster: loại HS đã xóa, thêm HS mới khi tải content cũ', async () => {
