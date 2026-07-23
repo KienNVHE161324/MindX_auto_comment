@@ -327,3 +327,41 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .auto-send-time {
   width: 112px;
 }
+
+.catch-up-card {
+  margin-bottom: 16px;
+  border-left: 4px solid #f59e0b;
+}
+
+.catch-up-description {
+  margin: 6px 0 10px;
+}
+
+.catch-up-list {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+}
+
+.catch-up-list li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.catch-up-results {
+  margin-bottom: 16px;
+}
+
+.catch-up-result-success {
+  color: #2e7d32;
+}
+
+.catch-up-result-skipped {
+  color: #9a6700;
+}
+
+.catch-up-result-error {
+  color: #b42318;
+}

@@ -9,6 +9,8 @@ function stub(overrides: Partial<Window['api']> = {}) {
     getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
     listClasses: vi.fn(async () => [] as SchoolClass[]),
     getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(async () => {}),
+    getAutoSendCatchUp: vi.fn(async () => []),
+    runAutoSendCatchUp: vi.fn(async () => []),
     ...overrides,
   }
   ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
@@ -21,8 +23,71 @@ const cWithSession: SchoolClass = {
   id: 'c2', code: 'B2', name: 'Lớp B2', students: [{ id: 's2', name: 'Bình' }],
   sessions: [{ id: 'ss1', dateTime: '2026-07-20T18:00:00' }],
 }
+const catchUpItem = {
+  classId: 'c1',
+  classCode: 'A1',
+  className: 'Lớp A1',
+  sessionId: 'ss1',
+  sessionDateTime: '2026-07-20T18:00:00',
+  channels: ['lms' as const, 'zalo' as const],
+}
 
 describe('ClassesPage', () => {
+  it('hiện lịch bị bỏ lỡ khi mở app nhưng chưa tự gửi', async () => {
+    const api = stub({
+      getAutoSendCatchUp: vi.fn(async () => [catchUpItem]),
+    })
+    render(<ClassesPage />)
+
+    expect(await screen.findByText(/có lịch gửi bị bỏ lỡ/i)).toBeInTheDocument()
+    expect(screen.getByText(/A1 — Lớp A1/i)).toBeInTheDocument()
+    expect(screen.getByText(/LMS, Zalo/i)).toBeInTheDocument()
+    expect(api.runAutoSendCatchUp).not.toHaveBeenCalled()
+  })
+
+  it('Để sau đóng thông báo và không gửi', async () => {
+    const api = stub({
+      getAutoSendCatchUp: vi.fn(async () => [catchUpItem]),
+    })
+    render(<ClassesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Để sau' }))
+
+    expect(screen.queryByText(/có lịch gửi bị bỏ lỡ/i)).not.toBeInTheDocument()
+    expect(api.runAutoSendCatchUp).not.toHaveBeenCalled()
+  })
+
+  it('Gửi bù tất cả hiện kết quả riêng từng lớp', async () => {
+    const api = stub({
+      getAutoSendCatchUp: vi.fn(async () => [catchUpItem]),
+      runAutoSendCatchUp: vi.fn(async () => [
+        {
+          classId: 'c1',
+          classCode: 'A1',
+          sessionId: 'ss1',
+          status: 'success' as const,
+          completedChannels: ['lms' as const, 'zalo' as const],
+          message: 'Đã gửi các kênh đã chọn.',
+        },
+        {
+          classId: 'c2',
+          classCode: 'B2',
+          sessionId: 'ss2',
+          status: 'error' as const,
+          completedChannels: [],
+          message: 'Mất kết nối LMS.',
+        },
+      ]),
+    })
+    render(<ClassesPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi bù tất cả' }))
+
+    await waitFor(() => expect(api.runAutoSendCatchUp).toHaveBeenCalledOnce())
+    expect(await screen.findByText(/A1: thành công/i)).toBeInTheDocument()
+    expect(screen.getByText(/B2: lỗi/i)).toBeInTheDocument()
+  })
+
   it('hiển thị "chưa có lớp" khi danh sách rỗng', async () => {
     render(<ClassesPage />)
     await waitFor(() => expect(screen.getByText(/chưa có lớp/i)).toBeInTheDocument())

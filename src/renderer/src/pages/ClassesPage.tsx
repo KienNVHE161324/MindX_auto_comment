@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import {
   AutoSendConfig,
+  AutoSendCatchUpItem,
+  AutoSendCatchUpResult,
   SchoolClass,
   ClassSession,
   SessionContent,
@@ -32,6 +34,12 @@ const CONTENT_STATUS_STYLE: Record<SessionContentStatus, { background: string; c
   'đã nhận xét':      { background: '#e8f5e9', color: '#2e7d32' },
 }
 
+const CATCH_UP_RESULT_LABEL: Record<AutoSendCatchUpResult['status'], string> = {
+  success: 'thành công',
+  skipped: 'bỏ qua',
+  error: 'lỗi',
+}
+
 export default function ClassesPage({ active = true }: { active?: boolean }): JSX.Element {
   const [classes, setClasses] = useState<SchoolClass[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -45,6 +53,10 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [pendingDelete, setPendingDelete] = useState<SchoolClass | null>(null)
   const [savingSchedules, setSavingSchedules] = useState<Set<string>>(new Set())
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [catchUpItems, setCatchUpItems] = useState<AutoSendCatchUpItem[]>([])
+  const [catchUpResults, setCatchUpResults] = useState<AutoSendCatchUpResult[]>([])
+  const [catchUpOpen, setCatchUpOpen] = useState(true)
+  const [catchUpRunning, setCatchUpRunning] = useState(false)
 
   const reload = async (): Promise<void> => {
     try {
@@ -66,6 +78,12 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   useEffect(() => {
     if (active && !editing && !composing) void reload()
   }, [active, editing, composing])
+
+  useEffect(() => {
+    void window.api.getAutoSendCatchUp()
+      .then(setCatchUpItems)
+      .catch(err => setError(`Không đọc được lịch gửi bù: ${(err as Error).message}`))
+  }, [])
 
   const syncFromLms = async (): Promise<void> => {
     setSyncing(true)
@@ -180,6 +198,21 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     }
   }
 
+  const runCatchUp = async (): Promise<void> => {
+    setCatchUpRunning(true)
+    try {
+      const results = await window.api.runAutoSendCatchUp()
+      setCatchUpResults(results)
+      setCatchUpItems([])
+      setCatchUpOpen(false)
+      await reload()
+    } catch (err) {
+      setError(`Không chạy được gửi bù: ${(err as Error).message}`)
+    } finally {
+      setCatchUpRunning(false)
+    }
+  }
+
   if (composing) {
     return <SessionComposer cls={composing.cls} session={composing.session} onDone={() => setComposing(null)} />
   }
@@ -214,6 +247,61 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
           Đã cập nhật nội dung {syncSummary.updated} buổi
           {syncSummary.skipped > 0 ? `, bỏ qua ${syncSummary.skipped} lớp (LMS chưa có nội dung buổi mới nhất)` : ''}.
         </p>
+      )}
+
+      {catchUpOpen && catchUpItems.length > 0 && (
+        <div className="card card-pad catch-up-card">
+          <strong>Có lịch gửi bị bỏ lỡ</strong>
+          <p className="text-muted catch-up-description">
+            App chưa chạy tại giờ hẹn. Kiểm tra danh sách rồi xác nhận gửi bù.
+          </p>
+          <ul className="catch-up-list">
+            {catchUpItems.map(item => (
+              <li key={`${item.classId}:${item.sessionId}`}>
+                <strong>{item.classCode} — {item.className}</strong>
+                <span>{formatSessionDate(item.sessionDateTime)}</span>
+                <span>{item.channels.map(channel =>
+                  channel === 'lms' ? 'LMS' : 'Zalo'
+                ).join(', ')}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="btn-row">
+            <button
+              className="btn btn-primary"
+              disabled={catchUpRunning}
+              onClick={() => void runCatchUp()}
+            >
+              {catchUpRunning ? 'Đang gửi bù...' : 'Gửi bù tất cả'}
+            </button>
+            <button
+              className="btn"
+              disabled={catchUpRunning}
+              onClick={() => setCatchUpOpen(false)}
+            >
+              Để sau
+            </button>
+          </div>
+        </div>
+      )}
+
+      {catchUpResults.length > 0 && (
+        <div className="card card-pad catch-up-results">
+          <strong>Kết quả gửi bù</strong>
+          <ul className="catch-up-list">
+            {catchUpResults.map(result => (
+              <li
+                key={`${result.classId}:${result.sessionId}`}
+                className={`catch-up-result-${result.status}`}
+              >
+                <strong>
+                  {result.classCode}: {CATCH_UP_RESULT_LABEL[result.status]}
+                </strong>
+                <span>{result.message}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {syncPreview && (
