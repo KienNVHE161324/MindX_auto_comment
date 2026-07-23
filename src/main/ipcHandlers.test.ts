@@ -136,7 +136,9 @@ describe('createIpcHandlers — LMS automation', () => {
       getRepository: vi.fn(), getContentRepository: vi.fn(),
       extractPdf: vi.fn(), rewrite: vi.fn(), rewriteBatch: vi.fn(),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
-      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [] })),
+      lmsPostSession: vi.fn(async () => ({
+        posted: ['An'], skipped: [], absentStudentNames: [],
+      })),
       lmsSyncAll: vi.fn(async () => ({ newClasses: [], contentResults: [], skippedClasses: [] })),
     }
   }

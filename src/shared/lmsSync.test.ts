@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { computeContentTargets, excludeAbsentSkipped, matchStudentByName, mergeContentResult } from './lmsSync'
+import {
+  computeContentTargets,
+  excludeAbsentSkipped,
+  matchStudentByName,
+  mergeAbsentStudentNames,
+  mergeContentResult,
+} from './lmsSync'
 import { SchoolClass, ClassSession, LmsContentResult } from './types'
 
 describe('computeContentTargets', () => {
@@ -60,6 +66,24 @@ describe('matchStudentByName', () => {
 
   it('không khớp -> undefined', () => {
     expect(matchStudentByName(students, 'Không tồn tại')).toBeUndefined()
+  })
+})
+
+describe('mergeAbsentStudentNames', () => {
+  it('khớp tên LMS, hợp nhất ID mới và giữ ID nghỉ cũ', () => {
+    expect(mergeAbsentStudentNames(
+      [{ id: 's1', name: 'An' }, { id: 's2', name: 'Nguyễn Sách Sâm' }],
+      ['s1'],
+      ['sách sâm'],
+    )).toEqual(['s1', 's2'])
+  })
+
+  it('tên lỗi kỹ thuật không nằm trong danh sách nghỉ thì không bị thêm', () => {
+    expect(mergeAbsentStudentNames(
+      [{ id: 's1', name: 'Phạm Bá Long' }],
+      [],
+      [],
+    )).toEqual([])
   })
 })
 

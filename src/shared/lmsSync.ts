@@ -35,6 +35,19 @@ export function matchStudentByName(students: Student[], name: string): Student |
   )
 }
 
+export function mergeAbsentStudentNames(
+  students: Student[],
+  existingIds: string[],
+  absentStudentNames: string[],
+): string[] {
+  const ids = new Set(existingIds)
+  for (const name of absentStudentNames) {
+    const student = matchStudentByName(students, name)
+    if (student) ids.add(student.id)
+  }
+  return [...ids]
+}
+
 export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): string[] {
   return skipped.filter(skippedName => {
     const normalizedSkipped = skippedName.trim().toLowerCase()

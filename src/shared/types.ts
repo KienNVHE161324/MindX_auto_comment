@@ -104,6 +104,7 @@ export interface LmsPostParams {
 export interface LmsPostResult {
   posted: string[]   // tên HS đã được nhận xét
   skipped: string[]  // tên HS nghỉ hoặc không có nội dung
+  absentStudentNames: string[]  // tên HS được LMS xác nhận nghỉ
   error?: string
 }
 
