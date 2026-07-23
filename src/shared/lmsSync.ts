@@ -38,10 +38,13 @@ export function matchStudentByName(students: Student[], name: string): Student |
 export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): string[] {
   return skipped.filter(skippedName => {
     const normalizedSkipped = skippedName.trim().toLowerCase()
+    const technicalSkip = normalizedSkipped.match(/^(.*?)\s+\(lỗi:/)
+    const skippedStudentName = technicalSkip?.[1] ?? normalizedSkipped
     return !absentNames.some(absentName => {
       const normalizedAbsent = absentName.trim().toLowerCase()
-      return normalizedAbsent !== ''
-        && (normalizedSkipped.includes(normalizedAbsent) || normalizedAbsent.includes(normalizedSkipped))
+      if (normalizedAbsent === '') return false
+      if (technicalSkip) return skippedStudentName === normalizedAbsent
+      return ` ${skippedStudentName} `.includes(` ${normalizedAbsent} `)
     })
   })
 }

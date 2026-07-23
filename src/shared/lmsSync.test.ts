@@ -70,6 +70,13 @@ describe('excludeAbsentSkipped', () => {
       ['Sách Sâm'],
     )).toEqual(['Phạm Bá Long (lỗi: timeout)'])
   })
+
+  it('giữ skip kỹ thuật khi tên nghỉ chỉ là chuỗi con của tên khác', () => {
+    expect(excludeAbsentSkipped(
+      ['Thanh (lỗi: timeout)'],
+      ['An'],
+    )).toEqual(['Thanh (lỗi: timeout)'])
+  })
 })
 
 describe('mergeContentResult', () => {
