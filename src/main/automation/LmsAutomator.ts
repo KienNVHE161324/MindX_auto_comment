@@ -110,6 +110,33 @@ export function isStudentCommentContentEqual(
   return normalizeStudentCommentContent(written) === normalizeStudentCommentContent(expected)
 }
 
+export function isUpdateSlotCommentRequest(
+  url: string,
+  postData: string | null,
+): boolean {
+  if (!url.startsWith('https://lms-api.mindx.edu.vn/')) return false
+  if (!postData) return false
+  try {
+    const payload = JSON.parse(postData) as { operationName?: unknown }
+    return payload.operationName === 'UpdateSlotComment'
+  } catch {
+    return false
+  }
+}
+
+export function isUpdateSlotCommentResponse(
+  status: number,
+  body: unknown,
+): boolean {
+  if (status < 200 || status >= 300 || !body || typeof body !== 'object') return false
+  const response = body as {
+    errors?: unknown
+    data?: { classes?: { updateSlotComment?: unknown } }
+  }
+  if (Array.isArray(response.errors) && response.errors.length > 0) return false
+  return Boolean(response.data?.classes?.updateSlotComment)
+}
+
 export function getLmsDrawerRefreshSelector(): string {
   return '#detail-content header button:has(svg[data-testid="RefreshIcon"])'
 }
@@ -659,9 +686,13 @@ export class LmsAutomator {
 
         // Area và Manual đều dùng Quill. Nếu popup đang ở trạng thái hiển thị,
         // click vùng nhận xét để mở editor của chính mode hiện tại; không đổi switch.
-        if (!(await editor.isVisible().catch(() => false))) {
+        const editorRendered = await editor
+          .waitFor({ state: 'visible', timeout: 1500 })
+          .then(() => true)
+          .catch(() => false)
+        if (!editorRendered) {
           const commentArea = activePopup.locator('table td p').first()
-          await commentArea.click({ timeout: 5000 })
+          await commentArea.evaluate(element => (element as HTMLElement).click())
         }
 
         try {
@@ -681,14 +712,21 @@ export class LmsAutomator {
         }
 
         const save = activePopup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
-        await save.click({ timeout: 5000 })
-        const saved = await isStudentCommentSaveConfirmed(() =>
-          editor.waitFor({ state: 'hidden', timeout: 8000 }),
+        const saveResponsePromise = page.waitForResponse(
+          response => isUpdateSlotCommentRequest(
+            response.url(),
+            response.request().postData(),
+          ),
+          { timeout: 15_000 },
         )
+        await save.click({ timeout: 5000 })
+        const saveResponse = await saveResponsePromise
+        const saveBody = await saveResponse.json().catch(() => null)
+        const saved = isUpdateSlotCommentResponse(saveResponse.status(), saveBody)
         if (!saved) {
           const debugPath = path.join(this.debugDir, 'lms-student-comment-save-debug.html')
           fs.writeFileSync(debugPath, await page.content(), 'utf8')
-          throw new Error(`LMS không xác nhận đã lưu nhận xét. HTML debug: ${debugPath}`)
+          throw new Error(`GraphQL UpdateSlotComment không xác nhận lưu thành công. HTML debug: ${debugPath}`)
         }
         if (await activePopup.isVisible().catch(() => false)) {
           await page.keyboard.press('Escape')

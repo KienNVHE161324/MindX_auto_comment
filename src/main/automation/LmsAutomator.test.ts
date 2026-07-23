@@ -19,6 +19,8 @@ import {
   makeLmsPostResult,
   matchLmsCommentByStudentName,
   isStudentCommentContentEqual,
+  isUpdateSlotCommentRequest,
+  isUpdateSlotCommentResponse,
   shouldWriteLmsSection,
 } from './LmsAutomator'
 
@@ -205,6 +207,31 @@ describe('isStudentCommentContentEqual', () => {
 
   it('không coi chuỗi dài chỉ chứa expected là nội dung đã ghi đúng', () => {
     expect(isStudentCommentContentEqual('An tiến bộ', 'An')).toBe(false)
+  })
+})
+
+describe('UpdateSlotComment GraphQL confirmation', () => {
+  it('chỉ khớp request lưu nhận xét học sinh của LMS', () => {
+    expect(isUpdateSlotCommentRequest(
+      'https://lms-api.mindx.edu.vn/',
+      JSON.stringify({ operationName: 'UpdateSlotComment' }),
+    )).toBe(true)
+    expect(isUpdateSlotCommentRequest(
+      'https://lms-api.mindx.edu.vn/',
+      JSON.stringify({ operationName: 'OtherMutation' }),
+    )).toBe(false)
+  })
+
+  it('xác nhận response có updateSlotComment và không có GraphQL errors', () => {
+    expect(isUpdateSlotCommentResponse(200, {
+      data: { classes: { updateSlotComment: { id: 'class-1' } } },
+    })).toBe(true)
+    expect(isUpdateSlotCommentResponse(200, {
+      errors: [{ message: 'Save failed' }],
+    })).toBe(false)
+    expect(isUpdateSlotCommentResponse(500, {
+      data: { classes: { updateSlotComment: { id: 'class-1' } } },
+    })).toBe(false)
   })
 })
 

@@ -64,3 +64,55 @@ Expected: toàn bộ lệnh PASS.
 git add -- src/main/automation/LmsAutomator.ts src/main/automation/LmsAutomator.test.ts
 git commit -m "fix: preserve LMS student comment mode"
 ```
+
+### Task 2: Chờ Quill và xác nhận Save bằng GraphQL
+
+**Files:**
+- Modify: `src/main/automation/LmsAutomator.ts`
+- Test: `src/main/automation/LmsAutomator.test.ts`
+
+**Interfaces:**
+- Produces: `isUpdateSlotCommentRequest(url, postData): boolean`
+- Produces: `isUpdateSlotCommentResponse(status, body): boolean`
+
+- [ ] **Step 1: Viết test đỏ cho request/response**
+
+```ts
+expect(isUpdateSlotCommentRequest(
+  'https://lms-api.mindx.edu.vn/',
+  JSON.stringify({ operationName: 'UpdateSlotComment' }),
+)).toBe(true)
+expect(isUpdateSlotCommentResponse(200, {
+  data: { classes: { updateSlotComment: { id: 'class-1' } } },
+})).toBe(true)
+expect(isUpdateSlotCommentResponse(200, {
+  errors: [{ message: 'Save failed' }],
+})).toBe(false)
+```
+
+- [ ] **Step 2: Chạy test đỏ**
+
+Run: `npm.cmd test -- src/main/automation/LmsAutomator.test.ts`
+
+Expected: FAIL vì hai helper chưa tồn tại.
+
+- [ ] **Step 3: Implement chờ editor và GraphQL**
+
+Chờ editor visible tối đa 1500ms trước khi click vùng nội dung. Trước `save.click()`, tạo `page.waitForResponse()` chỉ khớp POST tới `lms-api.mindx.edu.vn` có `operationName: UpdateSlotComment`. Sau click, parse JSON và chỉ xác nhận khi helper response trả `true`.
+
+- [ ] **Step 4: Xác minh**
+
+Run: `npm.cmd test -- src/main/automation/LmsAutomator.test.ts`
+
+Run: `npm.cmd run typecheck`
+
+Run: `npm.cmd test -- --run`
+
+Expected: toàn bộ lệnh PASS.
+
+- [ ] **Step 5: Commit**
+
+```powershell
+git add -- src/main/automation/LmsAutomator.ts src/main/automation/LmsAutomator.test.ts docs/superpowers/plans/2026-07-23-preserve-lms-comment-mode.md
+git commit -m "fix: confirm LMS comments through GraphQL"
+```
