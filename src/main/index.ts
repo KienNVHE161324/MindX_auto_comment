@@ -8,7 +8,7 @@ import { createStorageProvider } from './storage'
 import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { LmsAutomator } from './automation/LmsAutomator'
-import { AutoSendScheduler, writeZaloMessageToDocuments } from './automation/AutoSendScheduler'
+import { AutoSendScheduler } from './automation/AutoSendScheduler'
 import { ZaloWebAutomator } from './automation/ZaloWebAutomator'
 import { WorkflowMutex } from './automation/WorkflowMutex'
 import { IPC } from '../shared/types'
@@ -68,7 +68,7 @@ function createAutoSendScheduler(): AutoSendScheduler {
     },
     lmsPostSession: (params) => lmsAutomator.postSession(params),
     runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
-    writeZaloMessage: writeZaloMessageToDocuments(app.getPath('documents')),
+    sendZaloMessage: input => zaloAutomator.sendMessage(input),
     log: (msg) => console.log(msg),
   })
 }

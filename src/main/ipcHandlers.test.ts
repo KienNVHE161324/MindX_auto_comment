@@ -283,7 +283,7 @@ describe('createIpcHandlers — LMS automation', () => {
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: postSession,
       runLmsPostExclusive,
-      writeZaloMessage: vi.fn(async () => {}),
+      sendZaloMessage: vi.fn(async () => ({ status: 'sent' as const })),
       now: () => new Date('2026-07-23T19:00:00'),
     })
     const scheduled = scheduler.tick()

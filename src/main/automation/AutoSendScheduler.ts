@@ -1,5 +1,3 @@
-import * as fs from 'fs'
-import * as path from 'path'
 import {
   SchoolClass,
   ClassSession,
@@ -10,6 +8,7 @@ import {
   AutoSendCatchUpItem,
   AutoSendCatchUpResult,
   AutoSendChannel,
+  ZaloSendResult,
 } from '../../shared/types'
 import {
   planAutoSend,
@@ -20,6 +19,7 @@ import {
 } from '../../shared/autoSend'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 import type { SessionContentMetadataPatch } from '../content/ContentRepository'
+import { ZALO_TEST_SEARCH_TERM } from './ZaloWebAutomator'
 
 export interface AutoSendDeps {
   getClasses: () => Promise<SchoolClass[]>
@@ -36,8 +36,11 @@ export interface AutoSendDeps {
       postSession: (params: LmsPostParams) => Promise<LmsPostResult>,
     ) => Promise<T>,
   ): Promise<T>
-  /** Ghi tin Zalo ra ngoài — mặc định ghi file trong thư mục Documents (xem writeZaloMessageToDocuments). */
-  writeZaloMessage: (classCode: string, sessionDate: string, message: string) => Promise<void>
+  /** Gửi tin qua adapter Zalo Web; chỉ kết quả `sent` mới được lưu metadata. */
+  sendZaloMessage: (input: {
+    searchTerm: string
+    message: string
+  }) => Promise<ZaloSendResult>
   now?: () => Date
   log?: (msg: string) => void
 }
@@ -45,15 +48,6 @@ export interface AutoSendDeps {
 class LmsMetadataPersistenceError extends Error {}
 
 /** Ghi tin Zalo ra file .txt trong thư mục Documents — dùng khi chưa có automation Zalo Desktop thật. */
-export function writeZaloMessageToDocuments(documentsDir: string) {
-  return async (classCode: string, sessionDate: string, message: string): Promise<void> => {
-    const dir = path.join(documentsDir, 'MindX Auto Comment - Zalo tu dong')
-    fs.mkdirSync(dir, { recursive: true })
-    const file = path.join(dir, `${classCode}_${sessionDate}.txt`)
-    fs.writeFileSync(file, message, 'utf8')
-  }
-}
-
 export class AutoSendScheduler {
   private activeTick: Promise<void> | null = null
   private catchUpItems: AutoSendCatchUpItem[] = []
@@ -363,7 +357,14 @@ export class AutoSendScheduler {
       if (latest.zaloSentAt) return latest
 
       const message = buildZaloMessage(cls, session, latest, cfg.zaloMessageTemplate)
-      await this.deps.writeZaloMessage(cls.code, session.dateTime.slice(0, 10), message)
+      const result = await this.deps.sendZaloMessage({
+        searchTerm: ZALO_TEST_SEARCH_TERM,
+        message,
+      })
+      if (result.status === 'login-required') {
+        log(`[AutoSend] ${cls.code}: ${result.message}`)
+        return latest
+      }
       const zaloSentAt = (this.deps.now?.() ?? new Date()).toISOString()
       const persisted = await this.deps.updateContentMetadata(session.id, { zaloSentAt })
       return persisted ?? { ...latest, zaloSentAt }
