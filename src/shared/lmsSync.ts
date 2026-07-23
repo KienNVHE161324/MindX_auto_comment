@@ -35,6 +35,17 @@ export function matchStudentByName(students: Student[], name: string): Student |
   )
 }
 
+export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): string[] {
+  return skipped.filter(skippedName => {
+    const normalizedSkipped = skippedName.trim().toLowerCase()
+    return !absentNames.some(absentName => {
+      const normalizedAbsent = absentName.trim().toLowerCase()
+      return normalizedAbsent !== ''
+        && (normalizedSkipped.includes(normalizedAbsent) || normalizedAbsent.includes(normalizedSkipped))
+    })
+  })
+}
+
 export function mergeContentResult(
   cls: SchoolClass,
   session: ClassSession,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeContentTargets, matchStudentByName, mergeContentResult } from './lmsSync'
+import { computeContentTargets, excludeAbsentSkipped, matchStudentByName, mergeContentResult } from './lmsSync'
 import { SchoolClass, ClassSession, LmsContentResult } from './types'
 
 describe('computeContentTargets', () => {
@@ -60,6 +60,15 @@ describe('matchStudentByName', () => {
 
   it('không khớp -> undefined', () => {
     expect(matchStudentByName(students, 'Không tồn tại')).toBeUndefined()
+  })
+})
+
+describe('excludeAbsentSkipped', () => {
+  it('loại học sinh nghỉ khỏi các dòng bị bỏ qua bằng tên đã chuẩn hóa', () => {
+    expect(excludeAbsentSkipped(
+      ['Nguyễn Sách Sâm', 'Phạm Bá Long (lỗi: timeout)'],
+      ['Sách Sâm'],
+    )).toEqual(['Phạm Bá Long (lỗi: timeout)'])
   })
 })
 

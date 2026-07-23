@@ -261,6 +261,26 @@ describe('SessionComposer', () => {
     ))
   })
 
+  it('tách kết quả LMS thành nhận xét, học sinh nghỉ và lỗi kỹ thuật không lặp', async () => {
+    const api = stub({
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: vi.fn(async () => ({
+        posted: ['An'],
+        skipped: ['Nguyễn Sách Sâm', 'Phạm Bá Long (lỗi: timeout)'],
+        absentStudentNames: ['Sách Sâm'],
+      })),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => screen.getByRole('button', { name: /gửi lên lms/i }))
+
+    fireEvent.click(screen.getByRole('button', { name: /gửi lên lms/i }))
+
+    expect(await screen.findByText('Đã nhận xét: An')).toBeInTheDocument()
+    expect(screen.getByText('Học sinh nghỉ: Sách Sâm')).toBeInTheDocument()
+    expect(screen.getByText('Bỏ qua do lỗi/thiếu nội dung: Phạm Bá Long (lỗi: timeout)')).toBeInTheDocument()
+    expect(api.saveContent).toHaveBeenCalled()
+  })
+
   it('chỉ dựng lại preview đang mở sau khi LMS trả kết quả và content đã lưu', async () => {
     const clsWithTwo: SchoolClass = {
       id: 'c1', code: 'A1', name: 'Lớp A1',

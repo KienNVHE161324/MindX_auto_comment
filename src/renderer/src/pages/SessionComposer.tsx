@@ -6,7 +6,7 @@ import {
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import { buildZaloMessage } from '../../../shared/autoSend'
 import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
-import { mergeAbsentStudentNames } from '../../../shared/lmsSync'
+import { excludeAbsentSkipped, mergeAbsentStudentNames } from '../../../shared/lmsSync'
 import { ArrowLeftIcon } from '../components/Icons'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
@@ -213,6 +213,9 @@ export default function SessionComposer(
   }
 
   const contentLocked = contentLoading || saving || lmsPosting
+  const technicalSkipped = lmsResult
+    ? excludeAbsentSkipped(lmsResult.skipped, lmsResult.absentStudentNames)
+    : []
 
   return (
     <div className="page">
@@ -327,8 +330,11 @@ export default function SessionComposer(
           {lmsResult.posted.length > 0 && (
             <p className="text-success" style={{ margin: 0 }}>Đã nhận xét: {lmsResult.posted.join(', ')}</p>
           )}
-          {lmsResult.skipped.length > 0 && (
-            <p className="text-muted" style={{ margin: '4px 0 0' }}>Bỏ qua (nghỉ/thiếu nội dung): {lmsResult.skipped.join(', ')}</p>
+          {lmsResult.absentStudentNames.length > 0 && (
+            <p className="text-muted" style={{ margin: '4px 0 0' }}>Học sinh nghỉ: {lmsResult.absentStudentNames.join(', ')}</p>
+          )}
+          {technicalSkipped.length > 0 && (
+            <p className="text-muted" style={{ margin: '4px 0 0' }}>Bỏ qua do lỗi/thiếu nội dung: {technicalSkipped.join(', ')}</p>
           )}
         </div>
       )}
