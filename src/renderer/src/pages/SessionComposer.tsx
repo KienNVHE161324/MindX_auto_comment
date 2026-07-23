@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG,
+  SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig,
   LmsPostResult,
 } from '../../../shared/types'
 import { formatSessionDate } from '../../../shared/zaloTemplate'
@@ -20,23 +20,40 @@ function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
   }
 }
 
+function reconcileContentWithRoster(
+  cls: SchoolClass,
+  existing: SessionContent,
+): SessionContent {
+  return {
+    ...existing,
+    comments: cls.students.map(
+      student => existing.comments.find(comment => comment.studentId === student.id)
+        ?? { studentId: student.id, raw: '', polished: '' },
+    ),
+  }
+}
+
+type ComposerOperation = 'save' | 'lms' | 'ai' | 'pdf'
+
 export default function SessionComposer(
   { cls, session, onDone }: { cls: SchoolClass; session: ClassSession; onDone: () => void },
 ): JSX.Element {
   const [content, setContent] = useState<SessionContent>(() => emptyContent(cls, session))
-  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
+  const [config, setConfig] = useState<AppConfig | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [rewritingAll, setRewritingAll] = useState(false)
+  const [extractingPdf, setExtractingPdf] = useState(false)
   const [contentLoading, setContentLoading] = useState(true)
+  const [configLoading, setConfigLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lmsPosting, setLmsPosting] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
   const contentLoadingRef = useRef(true)
-  const savingRef = useRef(false)
-  const lmsPostingRef = useRef(false)
+  const configLoadingRef = useRef(true)
+  const operationRef = useRef<ComposerOperation | null>(null)
 
   const sessionNum = getSessionNumber(cls.sessions, session.id)
   const lmsBlocked = isLmsBlockedSession(cls.sessions, session.id)
@@ -44,16 +61,22 @@ export default function SessionComposer(
   useEffect(() => {
     let active = true
     contentLoadingRef.current = true
+    configLoadingRef.current = true
     setContentLoading(true)
-    void window.api.getConfig().then(setConfig)
+    setConfigLoading(true)
+    setConfig(null)
+    void window.api.getConfig().then(loadedConfig => {
+      if (active) setConfig(loadedConfig)
+    }).catch(err => {
+      if (active) setError((err as Error).message)
+    }).finally(() => {
+      if (!active) return
+      configLoadingRef.current = false
+      setConfigLoading(false)
+    })
     void window.api.getContent(session.id).then(existing => {
       if (!active || !existing) return
-      // Đồng bộ nhận xét theo roster hiện tại: giữ nhận xét cũ của HS còn trong lớp,
-      // thêm entry rỗng cho HS mới, loại nhận xét của HS đã bị xóa khỏi lớp.
-      const comments = cls.students.map(
-        s => existing.comments.find(c => c.studentId === s.id) ?? { studentId: s.id, raw: '', polished: '' },
-      )
-      setContent({ ...existing, comments })
+      setContent(reconcileContentWithRoster(cls, existing))
     }).catch(err => {
       if (active) setError((err as Error).message)
     }).finally(() => {
@@ -65,9 +88,27 @@ export default function SessionComposer(
   }, [session.id, cls])
 
   const mutate = (updater: (prev: SessionContent) => SessionContent): void => {
-    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
+    if (contentLoadingRef.current || operationRef.current) return
     setContent(updater)
     setSaved(false)
+  }
+
+  const beginOperation = (operation: ComposerOperation): boolean => {
+    if (contentLoadingRef.current || operationRef.current) return false
+    operationRef.current = operation
+    if (operation === 'save') setSaving(true)
+    if (operation === 'lms') setLmsPosting(true)
+    if (operation === 'ai') setRewritingAll(true)
+    if (operation === 'pdf') setExtractingPdf(true)
+    return true
+  }
+
+  const endOperation = (operation: ComposerOperation): void => {
+    if (operationRef.current === operation) operationRef.current = null
+    if (operation === 'save') setSaving(false)
+    if (operation === 'lms') setLmsPosting(false)
+    if (operation === 'ai') setRewritingAll(false)
+    if (operation === 'pdf') setExtractingPdf(false)
   }
 
   const commentFor = (studentId: string): StudentComment =>
@@ -85,36 +126,41 @@ export default function SessionComposer(
     })
 
   const loadPdf = async (): Promise<void> => {
+    if (!beginOperation('pdf')) return
     try {
       const text = await window.api.extractLessonFromPdf()
-      mutate(prev => ({ ...prev, lessonContent: text }))
+      setContent(prev => ({ ...prev, lessonContent: text }))
+      setSaved(false)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
+    } finally {
+      endOperation('pdf')
     }
   }
 
   // Sửa nhận xét cho TẤT CẢ học sinh (có mặt + có nội dung thô) trong 1 request Gemini.
   const aiRewriteAll = async (): Promise<void> => {
-    setRewritingAll(true)
+    if (!beginOperation('ai')) return
     try {
       const targets = cls.students.filter(s => !isAbsent(s.id) && commentFor(s.id).raw.trim() !== '')
-      if (targets.length === 0) { setRewritingAll(false); return }
+      if (targets.length === 0) return
       const polishedList = await window.api.rewriteCommentsBatch(
         targets.map(s => ({ name: s.name, raw: commentFor(s.id).raw })),
       )
-      mutate(prev => ({
+      setContent(prev => ({
         ...prev,
         comments: prev.comments.map(c => {
           const idx = targets.findIndex(t => t.id === c.studentId)
           return idx >= 0 && polishedList[idx] ? { ...c, polished: polishedList[idx] } : c
         }),
       }))
+      setSaved(false)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
     } finally {
-      setRewritingAll(false)
+      endOperation('ai')
     }
   }
 
@@ -127,11 +173,9 @@ export default function SessionComposer(
     if (
       lmsBlocked
       || contentLoadingRef.current
-      || savingRef.current
-      || lmsPostingRef.current
+      || operationRef.current
     ) return
-    lmsPostingRef.current = true
-    setLmsPosting(true)
+    if (!beginOperation('lms')) return
     setLmsResult(null)
     setError(null)
     try {
@@ -175,44 +219,53 @@ export default function SessionComposer(
           ...(didPost ? { postedToLms: true } : {}),
         }
         await window.api.saveContent(updated)
-        setContent(updated)
+        const persisted = await window.api.getContent(session.id)
+        const reconciled = persisted
+          ? reconcileContentWithRoster(cls, persisted)
+          : updated
+        setContent(reconciled)
         setPreview(current => (
-          current === null
+          current === null || !config
             ? null
-            : buildZaloMessage(cls, session, updated, config.zaloMessageTemplate)
+            : buildZaloMessage(cls, session, reconciled, config.zaloMessageTemplate)
         ))
       }
     } catch (err) {
       setError((err as Error).message)
     } finally {
-      lmsPostingRef.current = false
-      setLmsPosting(false)
+      endOperation('lms')
       setLmsStatus('')
     }
   }
 
   const showPreview = (): void => {
-    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
+    if (
+      contentLoadingRef.current
+      || configLoadingRef.current
+      || operationRef.current
+      || !config
+    ) return
     setPreview(buildZaloMessage(cls, session, content, config.zaloMessageTemplate))
   }
 
   const save = async (): Promise<void> => {
-    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
-    savingRef.current = true
-    setSaving(true)
+    if (!beginOperation('save')) return
     try {
       await window.api.saveContent(content)
+      const persisted = await window.api.getContent(session.id)
+      if (persisted) setContent(reconcileContentWithRoster(cls, persisted))
       setSaved(true)
       setError(null)
     } catch (err) {
       setError((err as Error).message)
     } finally {
-      savingRef.current = false
-      setSaving(false)
+      endOperation('save')
     }
   }
 
-  const contentLocked = contentLoading || saving || lmsPosting
+  const operationBusy = saving || lmsPosting || rewritingAll || extractingPdf
+  const contentLocked = contentLoading || operationBusy
+  const previewLocked = contentLocked || configLoading || !config
   const technicalSkipped = lmsResult
     ? excludeAbsentSkipped(lmsResult.skipped, lmsResult.absentStudentNames)
     : []
@@ -228,7 +281,7 @@ export default function SessionComposer(
           <span className="text-muted">· {formatSessionDate(session.dateTime) || 'buổi học'}</span>
         </div>
       </div>
-      {error && <p className="alert alert-error">{error}</p>}
+      {error && <p className="alert alert-error" role="alert">{error}</p>}
 
       <section className="section">
         <h3>Nội dung bài học</h3>
@@ -243,7 +296,9 @@ export default function SessionComposer(
             onChange={e => mutate(prev => ({ ...prev, lessonContent: e.target.value }))}
           />
         </div>
-        <button className="btn btn-sm" onClick={loadPdf} disabled={contentLocked}>Nạp PDF &amp; trích</button>
+        <button className="btn btn-sm" onClick={loadPdf} disabled={contentLocked}>
+          {extractingPdf ? 'Đang trích PDF...' : 'Nạp PDF & trích'}
+        </button>
       </section>
 
       <section className="section">
@@ -309,11 +364,11 @@ export default function SessionComposer(
       </section>
 
       <div className="action-bar">
-        <button className="btn" onClick={showPreview} disabled={contentLocked}>Xem trước Zalo</button>
+        <button className="btn" onClick={showPreview} disabled={previewLocked}>Xem trước Zalo</button>
         <button className="btn btn-primary" onClick={save} disabled={contentLocked}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={postToLms} disabled={contentLoading || saving || lmsPosting || lmsBlocked}>
+        <button className="btn btn-primary" onClick={postToLms} disabled={contentLocked || lmsBlocked}>
           {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
       </div>
@@ -325,8 +380,13 @@ export default function SessionComposer(
       )}
 
       {lmsResult && (
-        <div className="card card-pad" style={{ fontSize: 13, marginBottom: 16 }}>
-          {lmsResult.error && <p className="text-danger" style={{ margin: 0 }}>{lmsResult.error}</p>}
+        <div
+          className="card card-pad"
+          role="status"
+          aria-live="polite"
+          style={{ fontSize: 13, marginBottom: 16 }}
+        >
+          {lmsResult.error && <p className="text-danger" role="alert" style={{ margin: 0 }}>{lmsResult.error}</p>}
           {lmsResult.posted.length > 0 && (
             <p className="text-success" style={{ margin: 0 }}>Đã nhận xét: {lmsResult.posted.join(', ')}</p>
           )}

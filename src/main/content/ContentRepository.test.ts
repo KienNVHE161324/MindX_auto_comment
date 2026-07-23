@@ -32,4 +32,45 @@ describe('ContentRepository', () => {
     await repo.save({ ...makeContent('s1'), homework: 'Làm bài 5' })
     expect((await repo.get('s1'))?.homework).toBe('Làm bài 5')
   })
+
+  it('save draft stale vẫn giữ metadata mới và hợp nhất danh sách nghỉ', async () => {
+    await repo.save({
+      ...makeContent('s1'),
+      absentStudentIds: ['s2'],
+      postedToLms: true,
+      zaloSentAt: '2026-07-23T10:00:00.000Z',
+    })
+
+    await repo.save({
+      ...makeContent('s1'),
+      lessonContent: 'Giáo viên vừa sửa',
+      absentStudentIds: ['s1'],
+    })
+
+    expect(await repo.get('s1')).toEqual(expect.objectContaining({
+      lessonContent: 'Giáo viên vừa sửa',
+      absentStudentIds: ['s2', 's1'],
+      postedToLms: true,
+      zaloSentAt: '2026-07-23T10:00:00.000Z',
+    }))
+  })
+
+  it('serialize update metadata với save draft để không mất thay đổi của bên nào', async () => {
+    const base = makeContent('s1')
+    await repo.save(base)
+
+    await Promise.all([
+      repo.updateMetadata('s1', {
+        absentStudentIds: ['s2'],
+        postedToLms: true,
+      }),
+      repo.save({ ...base, homework: 'Bài giáo viên vừa nhập' }),
+    ])
+
+    expect(await repo.get('s1')).toEqual(expect.objectContaining({
+      homework: 'Bài giáo viên vừa nhập',
+      absentStudentIds: ['s2'],
+      postedToLms: true,
+    }))
+  })
 })

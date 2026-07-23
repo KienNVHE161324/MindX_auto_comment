@@ -118,6 +118,48 @@ describe('SessionComposer', () => {
     }))
   })
 
+  it('chờ cả config thật trước khi cho xem preview và không dùng DEFAULT_CONFIG tạm thời', async () => {
+    let resolveConfig!: (config: typeof DEFAULT_CONFIG) => void
+    const configPending = new Promise<typeof DEFAULT_CONFIG>(
+      resolve => { resolveConfig = resolve },
+    )
+    stub({
+      getContent: vi.fn(async () => ({
+        id: 'ss1',
+        classId: 'c1',
+        sessionId: 'ss1',
+        lessonContent: 'Bài thật',
+        homework: '',
+        comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }],
+      })),
+      getConfig: vi.fn(() => configPending),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+
+    const previewButton = screen.getByRole('button', { name: /xem trước zalo/i })
+    await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài thật'))
+    expect(previewButton).toBeDisabled()
+    fireEvent.click(previewButton)
+    expect(screen.queryByLabelText(/xem trước zalo/i)).not.toBeInTheDocument()
+
+    resolveConfig({
+      ...DEFAULT_CONFIG,
+      zaloMessageTemplate: 'MẪU THẬT: {noi_dung_bai_hoc}',
+    })
+    await waitFor(() => expect(previewButton).toBeEnabled())
+    fireEvent.click(previewButton)
+
+    expect(await screen.findByLabelText(/xem trước zalo/i)).toHaveTextContent('MẪU THẬT: Bài thật')
+  })
+
+  it('bắt lỗi tải config và công bố bằng alert', async () => {
+    stub({ getConfig: vi.fn(async () => { throw new Error('Không tải được cấu hình') }) })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Không tải được cấu hình')
+    expect(screen.getByRole('button', { name: /xem trước zalo/i })).toBeDisabled()
+  })
+
   it('"Nạp PDF & trích" điền nội dung bài học', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
@@ -137,6 +179,54 @@ describe('SessionComposer', () => {
     expect(api.rewriteCommentsBatch).toHaveBeenCalledWith([{ name: 'An', raw: 'ngoan' }])
     fireEvent.click(screen.getByText(/hoàn tác tất cả/i))
     expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('ngoan')
+  })
+
+  it('AI pending khóa mọi mutation xung đột rồi áp dụng kết quả, không silently discard', async () => {
+    let resolveRewrite!: (values: string[]) => void
+    const rewritePending = new Promise<string[]>(resolve => { resolveRewrite = resolve })
+    const api = stub({ rewriteCommentsBatch: vi.fn(() => rewritePending) })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    const comment = await screen.findByLabelText(/^nhận xét An$/i)
+    const lesson = screen.getByLabelText(/nội dung bài học/i)
+    fireEvent.change(comment, { target: { value: 'ngoan' } })
+
+    fireEvent.click(screen.getByRole('button', { name: /sửa tất cả bằng AI/i }))
+    await waitFor(() => expect(api.rewriteCommentsBatch).toHaveBeenCalledOnce())
+
+    expect(comment).toBeDisabled()
+    expect(lesson).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^lưu$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /gửi lên lms/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /nạp PDF/i })).toBeDisabled()
+    fireEvent.change(comment, { target: { value: 'không được ghi đè' } })
+    expect(comment).toHaveValue('ngoan')
+
+    resolveRewrite(['Nhận xét AI'])
+    await waitFor(() => expect(comment).toHaveValue('Nhận xét AI'))
+    expect(lesson).toBeEnabled()
+  })
+
+  it('PDF pending có busy state và khóa mọi mutation xung đột', async () => {
+    let resolvePdf!: (text: string) => void
+    const pdfPending = new Promise<string>(resolve => { resolvePdf = resolve })
+    const api = stub({ extractLessonFromPdf: vi.fn(() => pdfPending) })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    const lesson = await screen.findByLabelText(/nội dung bài học/i)
+
+    fireEvent.click(screen.getByRole('button', { name: /nạp PDF/i }))
+    await waitFor(() => expect(api.extractLessonFromPdf).toHaveBeenCalledOnce())
+
+    expect(screen.getByRole('button', { name: /đang trích PDF/i })).toBeDisabled()
+    expect(lesson).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^lưu$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /gửi lên lms/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /sửa tất cả bằng AI/i })).toBeDisabled()
+    fireEvent.change(lesson, { target: { value: 'không được ghi đè' } })
+    expect(lesson).toHaveValue('')
+
+    resolvePdf('Bài học từ PDF mới')
+    await waitFor(() => expect(lesson).toHaveValue('Bài học từ PDF mới'))
+    expect(screen.getByRole('button', { name: /nạp PDF/i })).toBeEnabled()
   })
 
   it('"Xem trước" dựng tin Zalo có tên lớp, bài học, nhận xét, bài tập', async () => {
@@ -172,6 +262,35 @@ describe('SessionComposer', () => {
     fireEvent.click(screen.getByText(/^lưu$/i))
     await waitFor(() => expect(api.saveContent).toHaveBeenCalled())
     expect(screen.getByText(/đã lưu/i)).toBeInTheDocument()
+  })
+
+  it('sau save re-fetch metadata mới thay vì giữ full object stale trong renderer', async () => {
+    const draft = {
+      id: 'ss1',
+      classId: 'c1',
+      sessionId: 'ss1',
+      lessonContent: 'Bài học',
+      homework: '',
+      comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }],
+    }
+    const api = stub({
+      getContent: vi.fn()
+        .mockResolvedValueOnce(draft)
+        .mockResolvedValueOnce({
+          ...draft,
+          absentStudentIds: ['s1'],
+          postedToLms: true,
+          zaloSentAt: '2026-07-23T10:00:00.000Z',
+        }),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài học'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^lưu$/i }))
+    await waitFor(() => expect(api.getContent).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole('button', { name: /xem trước zalo/i }))
+
+    expect(await screen.findByLabelText(/xem trước zalo/i)).toHaveTextContent('An: nghỉ')
   })
 
   it('chặn LMS trong khi thao tác Lưu đang pending', async () => {
@@ -278,6 +397,7 @@ describe('SessionComposer', () => {
     expect(await screen.findByText('Đã nhận xét: An')).toBeInTheDocument()
     expect(screen.getByText('Học sinh nghỉ: Sách Sâm')).toBeInTheDocument()
     expect(screen.getByText('Bỏ qua do lỗi/thiếu nội dung: Phạm Bá Long (lỗi: timeout)')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite')
     expect(api.saveContent).toHaveBeenCalled()
   })
 
@@ -364,6 +484,7 @@ describe('SessionComposer', () => {
     fireEvent.click(screen.getByText(/gửi lên lms/i))
     await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalled())
     expect(api.saveContent).not.toHaveBeenCalled()
+    expect(await screen.findByRole('alert')).toHaveTextContent('Lỗi kết nối')
   })
 
   it('AI sửa thất bại hiển thị lỗi', async () => {

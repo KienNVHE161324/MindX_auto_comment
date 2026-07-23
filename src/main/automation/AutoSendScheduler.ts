@@ -3,11 +3,15 @@ import * as path from 'path'
 import { SchoolClass, ClassSession, SessionContent, LmsPostParams, LmsPostResult, AppConfig } from '../../shared/types'
 import { planAutoSend, buildZaloMessage } from '../../shared/autoSend'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
+import type { SessionContentMetadataPatch } from '../content/ContentRepository'
 
 export interface AutoSendDeps {
   getClasses: () => Promise<SchoolClass[]>
   getContent: (sessionId: string) => Promise<SessionContent | null>
-  saveContent: (content: SessionContent) => Promise<void>
+  updateContentMetadata: (
+    sessionId: string,
+    patch: Partial<SessionContentMetadataPatch>,
+  ) => Promise<SessionContent | null>
   getConfig: () => Promise<AppConfig>
   lmsOpenBrowser: () => Promise<{ loggedIn: boolean }>
   lmsPostSession: (params: LmsPostParams) => Promise<LmsPostResult>
@@ -28,10 +32,23 @@ export function writeZaloMessageToDocuments(documentsDir: string) {
 }
 
 export class AutoSendScheduler {
+  private activeTick: Promise<void> | null = null
+
   constructor(private readonly deps: AutoSendDeps) {}
 
   /** Chạy 1 lượt kiểm tra tất cả lớp; gửi cho lớp nào tới giờ hẹn và còn thiếu LMS/Zalo. Không throw ra ngoài — lỗi 1 lớp không chặn lớp khác. */
-  async tick(): Promise<void> {
+  tick(): Promise<void> {
+    if (this.activeTick) return this.activeTick
+
+    const task = this.runTick()
+    const tracked = task.finally(() => {
+      if (this.activeTick === tracked) this.activeTick = null
+    })
+    this.activeTick = tracked
+    return tracked
+  }
+
+  private async runTick(): Promise<void> {
     const now = this.deps.now?.() ?? new Date()
     const log = this.deps.log ?? (() => {})
 
@@ -69,13 +86,10 @@ export class AutoSendScheduler {
     if (plan.needLms) {
       updated = await this.sendLms(cls, plan.session, updated, log)
     }
-    if (plan.needZalo) {
+    if (plan.needZalo && !updated.zaloSentAt) {
       updated = await this.sendZalo(cls, plan.session, updated, log)
     }
 
-    if (updated !== plan.content) {
-      await this.deps.saveContent(updated)
-    }
   }
 
   private async sendLms(
@@ -90,11 +104,17 @@ export class AutoSendScheduler {
         log(`[AutoSend] ${cls.code}: chưa đăng nhập LMS, bỏ qua lần này`)
         return content
       }
-      const absentIds = new Set(content.absentStudentIds ?? [])
+
+      // openBrowser có thể phải chờ workflow LMS khác. Đọc lại ngay trước khi post
+      // để không dùng kế hoạch đã stale trong lúc chờ khóa.
+      const freshContent = await this.deps.getContent(session.id)
+      if (!freshContent || freshContent.postedToLms) return freshContent ?? content
+
+      const absentIds = new Set(freshContent.absentStudentIds ?? [])
       const comments = cls.students
         .filter(s => !absentIds.has(s.id))
         .map(s => {
-          const cm = content.comments.find(c => c.studentId === s.id)
+          const cm = freshContent.comments.find(c => c.studentId === s.id)
           return { studentName: s.name, text: cm?.polished || cm?.raw || '' }
         })
         .filter(c => c.text.trim() !== '')
@@ -102,33 +122,38 @@ export class AutoSendScheduler {
       const result = await this.deps.lmsPostSession({
         classCode: cls.code,
         sessionDate: session.dateTime.slice(0, 10),
-        lessonContent: content.lessonContent,
-        homework: content.homework,
+        lessonContent: freshContent.lessonContent,
+        homework: freshContent.homework,
         comments,
       })
 
       if (result.error) {
         log(`[AutoSend] ${cls.code}: gửi LMS thất bại — ${result.error ?? 'không HS nào được gửi'}`)
-        return content
+        return freshContent
       }
 
       const absentStudentIds = mergeAbsentStudentNames(
         cls.students,
-        content.absentStudentIds ?? [],
+        freshContent.absentStudentIds ?? [],
         result.absentStudentNames,
       )
-      const absenceChanged = absentStudentIds.length !== (content.absentStudentIds ?? []).length
+      const absenceChanged = absentStudentIds.length !== (freshContent.absentStudentIds ?? []).length
       const didPost = result.posted.length > 0
       if (!didPost) {
         log(`[AutoSend] ${cls.code}: gửi LMS thất bại — không HS nào được gửi`)
       }
-      if (!didPost && !absenceChanged) return content
+      if (!didPost && !absenceChanged) return freshContent
 
-      return {
-        ...content,
-        ...(absenceChanged ? { absentStudentIds } : {}),
+      const patch: Partial<SessionContentMetadataPatch> = {
+        absentStudentIds,
         ...(didPost ? { postedToLms: true } : {}),
       }
+      const localUpdated: SessionContent = {
+        ...freshContent,
+        ...patch,
+        ...(didPost ? { postedToLms: true } : {}),
+      }
+      return await this.deps.updateContentMetadata(session.id, patch) ?? localUpdated
     } catch (err) {
       log(`[AutoSend] ${cls.code}: lỗi gửi LMS — ${(err as Error).message}`)
       return content
@@ -143,9 +168,30 @@ export class AutoSendScheduler {
   ): Promise<SessionContent> {
     try {
       const cfg = await this.deps.getConfig()
-      const message = buildZaloMessage(cls, session, content, cfg.zaloMessageTemplate)
+
+      // getConfig hoặc workflow LMS trước đó có thể chờ I/O. Lấy draft mới nhất
+      // ngay trước side effect và hợp nhất metadata đã lưu trong cùng tick.
+      const freshContent = await this.deps.getContent(session.id)
+      const latest = freshContent
+        ? {
+            ...freshContent,
+            absentStudentIds: [...new Set([
+              ...(freshContent.absentStudentIds ?? []),
+              ...(content.absentStudentIds ?? []),
+            ])],
+            ...(content.postedToLms ? { postedToLms: true } : {}),
+            ...(freshContent.zaloSentAt || content.zaloSentAt
+              ? { zaloSentAt: freshContent.zaloSentAt ?? content.zaloSentAt }
+              : {}),
+          }
+        : content
+      if (latest.zaloSentAt) return latest
+
+      const message = buildZaloMessage(cls, session, latest, cfg.zaloMessageTemplate)
       await this.deps.writeZaloMessage(cls.code, session.dateTime.slice(0, 10), message)
-      return { ...content, zaloSentAt: new Date().toISOString() }
+      const zaloSentAt = new Date().toISOString()
+      const persisted = await this.deps.updateContentMetadata(session.id, { zaloSentAt })
+      return persisted ?? { ...latest, zaloSentAt }
     } catch (err) {
       log(`[AutoSend] ${cls.code}: lỗi gửi Zalo — ${(err as Error).message}`)
       return content

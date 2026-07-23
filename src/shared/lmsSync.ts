@@ -1,6 +1,31 @@
 import { SchoolClass, ClassSession, Student, SessionContent, LmsContentTarget, LmsContentResult } from './types'
 import { getClassStatus } from './classStatus'
 
+export function normalizeStudentName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi')
+}
+
+export function resolveUniqueNameMatch<T>(
+  items: T[],
+  targetName: string,
+  getName: (item: T) => string,
+): T | undefined {
+  const target = normalizeStudentName(targetName)
+  if (!target) return undefined
+
+  const exact = items.filter(item => normalizeStudentName(getName(item)) === target)
+  if (exact.length === 1) return exact[0]
+  if (exact.length > 1) return undefined
+
+  const partial = items.filter(item => {
+    const candidate = normalizeStudentName(getName(item))
+    return candidate !== '' && (
+      target.includes(candidate) || candidate.includes(target)
+    )
+  })
+  return partial.length === 1 ? partial[0] : undefined
+}
+
 export function computeContentTargets(
   classes: SchoolClass[],
   hasContent: (sessionId: string) => boolean,
@@ -29,10 +54,7 @@ export function computeContentTargets(
 }
 
 export function matchStudentByName(students: Student[], name: string): Student | undefined {
-  const target = name.trim().toLowerCase()
-  return students.find(
-    s => target.includes(s.name.toLowerCase()) || s.name.toLowerCase().includes(target),
-  )
+  return resolveUniqueNameMatch(students, name, student => student.name)
 }
 
 export function mergeAbsentStudentNames(
@@ -49,17 +71,30 @@ export function mergeAbsentStudentNames(
 }
 
 export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): string[] {
-  return skipped.filter(skippedName => {
-    const normalizedSkipped = skippedName.trim().toLowerCase()
-    const technicalSkip = normalizedSkipped.match(/^(.*?)\s+\(lỗi:/)
-    const skippedStudentName = technicalSkip?.[1] ?? normalizedSkipped
-    return !absentNames.some(absentName => {
-      const normalizedAbsent = absentName.trim().toLowerCase()
-      if (normalizedAbsent === '') return false
-      if (technicalSkip) return skippedStudentName === normalizedAbsent
-      return ` ${skippedStudentName} `.includes(` ${normalizedAbsent} `)
-    })
+  const candidates = skipped.map((text, index) => {
+    const technical = text.match(/^(.*?)\s+\(lỗi:/i)
+    return {
+      index,
+      text,
+      name: (technical?.[1] ?? text).trim(),
+      technical: Boolean(technical),
+    }
   })
+  const nonTechnical = candidates.filter(candidate => !candidate.technical)
+  const excludedIndexes = new Set<number>()
+
+  for (const absentName of absentNames) {
+    const match = resolveUniqueNameMatch(
+      nonTechnical,
+      absentName,
+      candidate => candidate.name,
+    )
+    if (match) excludedIndexes.add(match.index)
+  }
+
+  return candidates
+    .filter(candidate => !excludedIndexes.has(candidate.index))
+    .map(candidate => candidate.text)
 }
 
 export function mergeContentResult(

@@ -6,6 +6,8 @@ import {
   LmsPostParams, LmsPostResult, LmsSyncResult, LmsScrapedClass,
   LmsContentTarget, LmsContentResult, LmsSyncAllResult,
 } from '../../shared/types'
+import { WorkflowMutex } from './WorkflowMutex'
+import { resolveUniqueNameMatch } from '../../shared/lmsSync'
 
 const BASE_URL = 'https://lms.mindx.edu.vn'
 const TIMEOUT = 30_000
@@ -64,6 +66,28 @@ export async function isStudentCommentSaveConfirmed(
   }
 }
 
+export function matchLmsCommentByStudentName(
+  comments: { studentName: string; text: string }[],
+  studentName: string,
+): { studentName: string; text: string } | undefined {
+  return resolveUniqueNameMatch(comments, studentName, comment => comment.studentName)
+}
+
+export function normalizeStudentCommentContent(content: string): string {
+  return content
+    .normalize('NFC')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function isStudentCommentContentEqual(
+  written: string,
+  expected: string,
+): boolean {
+  return normalizeStudentCommentContent(written) === normalizeStudentCommentContent(expected)
+}
+
 export function getLmsDrawerRefreshSelector(): string {
   return '#detail-content header button:has(svg[data-testid="RefreshIcon"])'
 }
@@ -109,6 +133,7 @@ function checkCdpAvailable(): Promise<boolean> {
 export class LmsAutomator {
   private context: BrowserContext | null = null
   private cdpBrowser: Browser | null = null
+  private readonly workflowMutex = new WorkflowMutex()
 
   constructor(
     private readonly sessionDir: string,
@@ -122,6 +147,10 @@ export class LmsAutomator {
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   async launch(): Promise<void> {
+    return this.workflowMutex.runExclusive(() => this.launchUnlocked())
+  }
+
+  private async launchUnlocked(): Promise<void> {
     if (this.cdpBrowser || this.context) return
 
     // 1. Thử kết nối Chrome đang mở qua CDP
@@ -156,6 +185,10 @@ export class LmsAutomator {
   }
 
   async close(): Promise<void> {
+    return this.workflowMutex.runExclusive(() => this.closeUnlocked())
+  }
+
+  private async closeUnlocked(): Promise<void> {
     if (this.cdpBrowser) {
       await this.cdpBrowser.close()  // disconnect, không đóng Chrome của user
       this.cdpBrowser = null
@@ -171,8 +204,12 @@ export class LmsAutomator {
   // ─── Public API ────────────────────────────────────────────────────────────
 
   async openBrowser(email?: string, password?: string): Promise<{ loggedIn: boolean }> {
+    return this.workflowMutex.runExclusive(() => this.openBrowserUnlocked(email, password))
+  }
+
+  private async openBrowserUnlocked(email?: string, password?: string): Promise<{ loggedIn: boolean }> {
     console.log('[LMS] openBrowser() bắt đầu')
-    await this.launch()
+    await this.launchUnlocked()
     console.log('[LMS] launch() xong, lấy page...')
     const page = await this.getPage()
     await page.bringToFront()
@@ -218,6 +255,10 @@ export class LmsAutomator {
   }
 
   async postSession(params: LmsPostParams): Promise<LmsPostResult> {
+    return this.workflowMutex.runExclusive(() => this.postSessionUnlocked(params))
+  }
+
+  private async postSessionUnlocked(params: LmsPostParams): Promise<LmsPostResult> {
     if (!this.cdpBrowser && !this.context) {
       throw new Error('Trình duyệt LMS chưa mở. Hãy bấm "Gửi lên LMS" trước.')
     }
@@ -238,6 +279,10 @@ export class LmsAutomator {
    * @param existingCodes Mã lớp đã có — bỏ qua, không fetch lại
    */
   async syncClasses(existingCodes: string[] = []): Promise<LmsSyncResult> {
+    return this.workflowMutex.runExclusive(() => this.syncClassesUnlocked(existingCodes))
+  }
+
+  private async syncClassesUnlocked(existingCodes: string[]): Promise<LmsSyncResult> {
     console.log('[LMS] syncClasses() bắt đầu, existingCodes:', existingCodes)
     if (!this.cdpBrowser && !this.context) {
       throw new Error('Trình duyệt LMS chưa mở.')
@@ -255,6 +300,15 @@ export class LmsAutomator {
    * Đồng bộ toàn diện: thêm lớp mới + lấy nội dung buổi gần nhất còn thiếu của lớp đang có.
    */
   async syncAll(
+    existingCodes: string[],
+    contentTargets: LmsContentTarget[],
+  ): Promise<LmsSyncAllResult> {
+    return this.workflowMutex.runExclusive(
+      () => this.syncAllUnlocked(existingCodes, contentTargets),
+    )
+  }
+
+  private async syncAllUnlocked(
     existingCodes: string[],
     contentTargets: LmsContentTarget[],
   ): Promise<LmsSyncAllResult> {
@@ -542,11 +596,7 @@ export class LmsAutomator {
         continue
       }
 
-      const commentData = comments.find(
-        c =>
-          studentName.toLowerCase().includes(c.studentName.toLowerCase()) ||
-          c.studentName.toLowerCase().includes(studentName.toLowerCase()),
-      )
+      const commentData = matchLmsCommentByStudentName(comments, studentName)
 
       if (!commentData?.text) {
         skipped.push(studentName)
@@ -580,7 +630,7 @@ export class LmsAutomator {
         await editor.fill(commentData.text)
 
         const written = ((await editor.innerText().catch(() => '')) ?? '').trim()
-        if (!written.includes(commentData.text.trim())) {
+        if (!isStudentCommentContentEqual(written, commentData.text)) {
           const debugPath = path.join(this.debugDir, 'lms-student-comment-editor-debug.html')
           fs.writeFileSync(debugPath, await page.content(), 'utf8')
           throw new Error(`LMS chưa nhận nội dung sau khi click vùng comment. HTML debug: ${debugPath}`)

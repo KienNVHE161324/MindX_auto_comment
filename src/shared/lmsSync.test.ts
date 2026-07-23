@@ -67,6 +67,25 @@ describe('matchStudentByName', () => {
   it('không khớp -> undefined', () => {
     expect(matchStudentByName(students, 'Không tồn tại')).toBeUndefined()
   })
+
+  it('ưu tiên exact trước partial dù partial đứng trước', () => {
+    const withExact = [
+      { id: 's1', name: 'Bảo An' },
+      { id: 's2', name: 'An' },
+    ]
+
+    expect(matchStudentByName(withExact, 'An')?.id).toBe('s2')
+  })
+
+  it('chỉ khớp partial khi có đúng một ứng viên', () => {
+    const ambiguous = [
+      { id: 's1', name: 'Nguyễn Văn An' },
+      { id: 's2', name: 'Trần Bảo An' },
+    ]
+
+    expect(matchStudentByName(ambiguous, 'An')).toBeUndefined()
+    expect(matchStudentByName(ambiguous, 'Văn An')?.id).toBe('s1')
+  })
 })
 
 describe('mergeAbsentStudentNames', () => {
@@ -85,6 +104,14 @@ describe('mergeAbsentStudentNames', () => {
       [],
     )).toEqual([])
   })
+
+  it('tên nghỉ partial mơ hồ không tự map sang học sinh đầu tiên', () => {
+    expect(mergeAbsentStudentNames(
+      [{ id: 's1', name: 'Nguyễn Văn An' }, { id: 's2', name: 'Trần Bảo An' }],
+      [],
+      ['An'],
+    )).toEqual([])
+  })
 })
 
 describe('excludeAbsentSkipped', () => {
@@ -100,6 +127,20 @@ describe('excludeAbsentSkipped', () => {
       ['Thanh (lỗi: timeout)'],
       ['An'],
     )).toEqual(['Thanh (lỗi: timeout)'])
+  })
+
+  it('ưu tiên exact khi loại absence khỏi report nên không xóa nhầm tên dài hơn', () => {
+    expect(excludeAbsentSkipped(
+      ['An', 'Bảo An'],
+      ['An'],
+    )).toEqual(['Bảo An'])
+  })
+
+  it('giữ tất cả skip khi partial absence mơ hồ', () => {
+    expect(excludeAbsentSkipped(
+      ['Nguyễn Văn An', 'Trần Bảo An'],
+      ['An'],
+    )).toEqual(['Nguyễn Văn An', 'Trần Bảo An'])
   })
 })
 
@@ -144,6 +185,30 @@ describe('mergeContentResult', () => {
       students: [{ name: 'Học sinh lạ', attended: true, comment: 'x' }],
     }
     const content = mergeContentResult(cls, session, result)
+    expect(content.comments).toEqual([])
+    expect(content.absentStudentIds).toEqual([])
+  })
+
+  it('tên LMS partial mơ hồ -> không ghi nhận xét hoặc nghỉ sai học sinh', () => {
+    const ambiguousClass: SchoolClass = {
+      ...cls,
+      students: [
+        { id: 's1', name: 'Nguyễn Văn An' },
+        { id: 's2', name: 'Trần Bảo An' },
+      ],
+    }
+    const result: LmsContentResult = {
+      classCode: 'A1',
+      sessionDate: '2026-07-10',
+      lessonContent: 'Bài học',
+      homework: '',
+      students: [
+        { name: 'An', attended: true, comment: 'Ngoan' },
+        { name: 'An', attended: false, comment: '' },
+      ],
+    }
+
+    const content = mergeContentResult(ambiguousClass, session, result)
     expect(content.comments).toEqual([])
     expect(content.absentStudentIds).toEqual([])
   })

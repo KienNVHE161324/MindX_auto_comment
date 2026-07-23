@@ -50,7 +50,8 @@ function startAutoSendScheduler(): void {
   const scheduler = new AutoSendScheduler({
     getClasses: async () => (await getRepository()).list(),
     getContent: async (sessionId) => (await getContentRepository()).get(sessionId),
-    saveContent: async (content) => (await getContentRepository()).save(content),
+    updateContentMetadata: async (sessionId, patch) =>
+      (await getContentRepository()).updateMetadata(sessionId, patch),
     getConfig: () => configStore.load(),
     lmsOpenBrowser: async () => {
       const cfg = await configStore.load()

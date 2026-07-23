@@ -1,6 +1,14 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { StorageProvider } from './StorageProvider'
+import { WorkflowMutex } from '../automation/WorkflowMutex'
+
+const storageWriteLocks = new Map<string, WorkflowMutex>()
+
+export function makeUniqueTempPath(target: string): string {
+  return `${target}.${process.pid}.${randomUUID()}.tmp`
+}
 
 export class LocalStorageProvider implements StorageProvider {
   constructor(private readonly baseDir: string) {}
@@ -10,6 +18,10 @@ export class LocalStorageProvider implements StorageProvider {
   }
   private pathOf(collection: string, id: string): string {
     return join(this.dirOf(collection), `${id}.json`)
+  }
+
+  concurrencyKey(collection: string, id: string): string {
+    return this.pathOf(collection, id)
   }
 
   async read<T>(collection: string, id: string): Promise<T | null> {
@@ -23,12 +35,25 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async write<T>(collection: string, id: string, data: T): Promise<void> {
-    await fs.mkdir(this.dirOf(collection), { recursive: true })
-    // Ghi atomic: ghi file tạm rồi đổi tên, tránh để lại file JSON hỏng nếu gián đoạn giữa chừng.
     const target = this.pathOf(collection, id)
-    const tmp = `${target}.tmp`
-    await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
-    await fs.rename(tmp, target)
+    let lock = storageWriteLocks.get(target)
+    if (!lock) {
+      lock = new WorkflowMutex()
+      storageWriteLocks.set(target, lock)
+    }
+    await lock.runExclusive(async () => {
+      await fs.mkdir(this.dirOf(collection), { recursive: true })
+      // Ghi atomic: mỗi write có file tạm riêng, rồi đổi tên dưới khóa theo target.
+      const tmp = makeUniqueTempPath(target)
+      try {
+        await fs.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8')
+        await fs.rename(tmp, target)
+      } finally {
+        await fs.unlink(tmp).catch(err => {
+          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+        })
+      }
+    })
   }
 
   async list<T>(collection: string): Promise<T[]> {

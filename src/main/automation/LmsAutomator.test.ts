@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  LmsAutomator,
   getCommentSessionDatePattern,
   getCommentSessionDateTextPattern,
   getLmsTabReadySelector,
@@ -14,8 +15,43 @@ import {
   getLmsDrawerRefreshSelector,
   getStudentCommentButtonPattern,
   makeLmsPostResult,
+  matchLmsCommentByStudentName,
+  isStudentCommentContentEqual,
   shouldWriteLmsSection,
 } from './LmsAutomator'
+
+describe('LmsAutomator workflow serialization', () => {
+  it('dùng cùng mutex cho các public workflow nên không overlap', async () => {
+    const automator = new LmsAutomator('unused-in-test')
+    const internals = automator as unknown as {
+      openBrowserUnlocked: () => Promise<{ loggedIn: boolean }>
+      syncClassesUnlocked: (codes: string[]) => Promise<{ classes: [] }>
+    }
+    let releaseFirst!: () => void
+    const firstBlocked = new Promise<void>(resolve => { releaseFirst = resolve })
+    const order: string[] = []
+    internals.openBrowserUnlocked = async () => {
+      order.push('open:start')
+      await firstBlocked
+      order.push('open:end')
+      return { loggedIn: true }
+    }
+    internals.syncClassesUnlocked = async () => {
+      order.push('sync:start')
+      return { classes: [] }
+    }
+
+    const opening = automator.openBrowser()
+    await vi.waitFor(() => expect(order).toEqual(['open:start']))
+    const syncing = automator.syncClasses()
+    await Promise.resolve()
+    expect(order).toEqual(['open:start'])
+
+    releaseFirst()
+    await Promise.all([opening, syncing])
+    expect(order).toEqual(['open:start', 'open:end', 'sync:start'])
+  })
+})
 
 describe('getLmsTabPattern', () => {
   it('khớp tab nhận xét ở cả giao diện tiếng Việt và tiếng Anh', () => {
@@ -107,6 +143,34 @@ describe('isStudentCommentSaveConfirmed', () => {
     })
 
     expect(saved).toBe(false)
+  })
+})
+
+describe('matchLmsCommentByStudentName', () => {
+  const comments = [
+    { studentName: 'Bảo An', text: 'Nhận xét Bảo An' },
+    { studentName: 'An', text: 'Nhận xét An' },
+  ]
+
+  it('ưu tiên exact nên LMS "An" không lấy nhận xét của "Bảo An"', () => {
+    expect(matchLmsCommentByStudentName(comments, 'An')?.text).toBe('Nhận xét An')
+  })
+
+  it('trả undefined khi partial khớp nhiều học sinh', () => {
+    expect(matchLmsCommentByStudentName([
+      { studentName: 'Nguyễn Văn An', text: 'Một' },
+      { studentName: 'Trần Bảo An', text: 'Hai' },
+    ], 'An')).toBeUndefined()
+  })
+})
+
+describe('isStudentCommentContentEqual', () => {
+  it('so sánh equality sau khi chuẩn hóa khoảng trắng', () => {
+    expect(isStudentCommentContentEqual('  Tiến bộ\n đều  ', 'Tiến bộ đều')).toBe(true)
+  })
+
+  it('không coi chuỗi dài chỉ chứa expected là nội dung đã ghi đúng', () => {
+    expect(isStudentCommentContentEqual('An tiến bộ', 'An')).toBe(false)
   })
 })
 
