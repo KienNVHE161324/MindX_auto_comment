@@ -26,6 +26,8 @@ export interface AutoSendDeps {
   log?: (msg: string) => void
 }
 
+class LmsMetadataPersistenceError extends Error {}
+
 /** Ghi tin Zalo ra file .txt trong thư mục Documents — dùng khi chưa có automation Zalo Desktop thật. */
 export function writeZaloMessageToDocuments(documentsDir: string) {
   return async (classCode: string, sessionDate: string, message: string): Promise<void> => {
@@ -153,11 +155,24 @@ export class AutoSendScheduler {
           absentStudentIds,
           ...(didPost ? { postedToLms: true } : {}),
         }
-        const localUpdated: SessionContent = { ...freshContent, ...patch }
-        return await this.deps.updateContentMetadata(session.id, patch) ?? localUpdated
+        let persisted: SessionContent | null
+        try {
+          persisted = await this.deps.updateContentMetadata(session.id, patch)
+        } catch (err) {
+          throw new LmsMetadataPersistenceError(
+            `Đã gửi LMS nhưng không lưu được metadata: ${(err as Error).message}`,
+          )
+        }
+        if (!persisted) {
+          throw new LmsMetadataPersistenceError(
+            'Đã gửi LMS nhưng content không còn tồn tại để lưu metadata',
+          )
+        }
+        return persisted
       })
     } catch (err) {
       log(`[AutoSend] ${cls.code}: lỗi gửi LMS — ${(err as Error).message}`)
+      if (err instanceof LmsMetadataPersistenceError) throw err
       return content
     }
   }

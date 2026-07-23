@@ -115,6 +115,7 @@ function registerIpc(): void {
       return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
     },
     lmsPostSession: (params) => lmsAutomator.postSession(params),
+    runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
     lmsSyncAll: (params) => lmsAutomator.syncAll(params.existingCodes, params.contentTargets),
   })
 
@@ -133,6 +134,10 @@ function registerIpc(): void {
   ipcMain.handle(IPC.rewriteCommentsBatch, (_e, items) => handlers.rewriteCommentsBatch(items))
   ipcMain.handle(IPC.lmsOpenBrowser, () => handlers.lmsOpenBrowser())
   ipcMain.handle(IPC.lmsPostSession, (_e, params) => handlers.lmsPostSession(params))
+  ipcMain.handle(
+    IPC.lmsPostSessionAndSave,
+    (_e, request) => handlers.lmsPostSessionAndSave(request),
+  )
   ipcMain.handle(IPC.lmsSyncAll, (_e, params) => handlers.lmsSyncAll(params))
 }
 

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createIpcHandlers } from './ipcHandlers'
+import { AutoSendScheduler } from './automation/AutoSendScheduler'
+import { WorkflowMutex } from './automation/WorkflowMutex'
 import { DEFAULT_CONFIG, SchoolClass, SessionContent, LmsPostParams } from '../shared/types'
 
 function makeDeps() {
@@ -162,6 +164,94 @@ describe('createIpcHandlers — LMS automation', () => {
     const res = await api.lmsPostSession(params)
     expect(res.posted).toEqual(['An'])
     expect(deps.lmsPostSession).toHaveBeenCalledWith(params)
+  })
+
+  it('manual post giữ shared LMS lock tới khi metadata đã persist nên scheduler chờ không post trùng', async () => {
+    const content: SessionContent = {
+      id: 'ss1',
+      classId: 'c1',
+      sessionId: 'ss1',
+      lessonContent: 'Bài học',
+      homework: 'BT',
+      comments: [{ studentId: 's1', raw: 'Ngoan', polished: '' }],
+    }
+    const cls: SchoolClass = {
+      id: 'c1',
+      code: 'A1',
+      name: 'Lớp A1',
+      students: [{ id: 's1', name: 'An' }],
+      sessions: [{ id: 'ss1', dateTime: '2026-07-20T18:00:00' }],
+      autoSend: { enabled: true, time: '18:00' },
+    }
+    let stored = content
+    let releaseSave!: () => void
+    let signalSaveStarted!: () => void
+    const saveBlocked = new Promise<void>(resolve => { releaseSave = resolve })
+    const saveStarted = new Promise<void>(resolve => { signalSaveStarted = resolve })
+    const contentRepo = {
+      get: vi.fn(async () => stored),
+      save: vi.fn(async (next: SessionContent) => {
+        signalSaveStarted()
+        await saveBlocked
+        stored = next
+      }),
+    }
+    const workflowMutex = new WorkflowMutex()
+    const postSession = vi.fn(async () => ({
+      posted: ['An'],
+      skipped: [],
+      absentStudentNames: [],
+    }))
+    const runLmsPostExclusive = <T,>(
+      operation: (post: typeof postSession) => Promise<T>,
+    ): Promise<T> => workflowMutex.runExclusive(() => operation(postSession))
+    const deps = {
+      ...makeDeps(),
+      getContentRepository: vi.fn(async () => contentRepo),
+      lmsPostSession: postSession,
+      runLmsPostExclusive,
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsSyncAll: vi.fn(),
+    }
+    const api = createIpcHandlers(deps as never)
+    const params: LmsPostParams = {
+      classCode: 'A1',
+      sessionDate: '2026-07-20',
+      lessonContent: content.lessonContent,
+      homework: content.homework,
+      comments: [{ studentName: 'An', text: 'Ngoan' }],
+    }
+
+    const manual = api.lmsPostSessionAndSave({
+      params,
+      content,
+      students: cls.students,
+    })
+    await saveStarted
+
+    const scheduler = new AutoSendScheduler({
+      getClasses: vi.fn(async () => [cls]),
+      getContent: vi.fn(async () => stored),
+      updateContentMetadata: vi.fn(async (_sessionId, patch) => {
+        stored = { ...stored, ...patch }
+        return stored
+      }),
+      getConfig: vi.fn(async () => DEFAULT_CONFIG),
+      lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+      lmsPostSession: postSession,
+      runLmsPostExclusive,
+      writeZaloMessage: vi.fn(async () => {}),
+      now: () => new Date('2026-07-23T19:00:00'),
+    })
+    const scheduled = scheduler.tick()
+    await Promise.resolve()
+    expect(postSession).toHaveBeenCalledOnce()
+
+    releaseSave()
+    await Promise.all([manual, scheduled])
+
+    expect(postSession).toHaveBeenCalledOnce()
+    expect(stored.postedToLms).toBe(true)
   })
 
   it('lmsSyncAll truyền params và ủy quyền cho dep', async () => {

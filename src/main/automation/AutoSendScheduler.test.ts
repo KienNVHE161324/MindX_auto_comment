@@ -27,7 +27,10 @@ function makeDeps(overrides: Partial<AutoSendDeps> = {}): AutoSendDeps {
   const deps = {
     getClasses: vi.fn(async () => [] as SchoolClass[]),
     getContent: vi.fn(async () => null),
-    updateContentMetadata: vi.fn(async () => null),
+    updateContentMetadata: vi.fn(async (sessionId, patch) => ({
+      ...makeContent({ id: sessionId, sessionId }),
+      ...patch,
+    })),
     getConfig: vi.fn(async () => DEFAULT_CONFIG),
     lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
     lmsPostSession: vi.fn(async () => ({
@@ -163,6 +166,26 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       zaloSentAt: now.toISOString(),
     })
+  })
+
+  it('LMS đã post nhưng lưu metadata thất bại -> dừng tick của lớp, không gửi Zalo stale', async () => {
+    const writeZaloMessage = vi.fn(async () => {})
+    const log = vi.fn()
+    const deps = makeDeps({
+      getClasses: vi.fn(async () => [makeCls()]),
+      getContent: vi.fn(async () => makeContent()),
+      updateContentMetadata: vi.fn(async () => {
+        throw new Error('Không lưu được metadata LMS')
+      }),
+      writeZaloMessage,
+      log,
+    })
+
+    await new AutoSendScheduler(deps).tick()
+
+    expect(deps.lmsPostSession).toHaveBeenCalledOnce()
+    expect(writeZaloMessage).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('Không lưu được metadata LMS'))
   })
 
   it('đã gửi LMS rồi -> chỉ gửi Zalo, không gọi lại lmsPostSession', async () => {

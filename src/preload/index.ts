@@ -17,6 +17,7 @@ const api: AppApi = {
   rewriteCommentsBatch: (items) => ipcRenderer.invoke(IPC.rewriteCommentsBatch, items),
   lmsOpenBrowser: () => ipcRenderer.invoke(IPC.lmsOpenBrowser),
   lmsPostSession: (params) => ipcRenderer.invoke(IPC.lmsPostSession, params),
+  lmsPostSessionAndSave: (request) => ipcRenderer.invoke(IPC.lmsPostSessionAndSave, request),
   lmsSyncAll: (params) => ipcRenderer.invoke(IPC.lmsSyncAll, params),
 }
 

@@ -6,7 +6,7 @@ import {
 import { formatSessionDate } from '../../../shared/zaloTemplate'
 import { buildZaloMessage } from '../../../shared/autoSend'
 import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
-import { excludeAbsentSkipped, mergeAbsentStudentNames } from '../../../shared/lmsSync'
+import { excludeAbsentSkipped } from '../../../shared/lmsSync'
 import { ArrowLeftIcon } from '../components/Icons'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
@@ -33,7 +33,25 @@ function reconcileContentWithRoster(
   }
 }
 
-type ComposerOperation = 'save' | 'lms' | 'ai' | 'pdf'
+function mergeServerMetadata(
+  draft: SessionContent,
+  stored: SessionContent | null,
+): SessionContent {
+  if (!stored) return draft
+  const merged = { ...draft }
+  const metadataKeys = [
+    'absentStudentIds',
+    'postedToLms',
+    'zaloSentAt',
+  ] as const
+  for (const key of metadataKeys) {
+    if (stored[key] === undefined) delete merged[key]
+    else Object.assign(merged, { [key]: stored[key] })
+  }
+  return merged
+}
+
+type ComposerOperation = 'save' | 'lms' | 'ai' | 'pdf' | 'preview'
 
 export default function SessionComposer(
   { cls, session, onDone }: { cls: SchoolClass; session: ClassSession; onDone: () => void },
@@ -50,6 +68,7 @@ export default function SessionComposer(
   const [configLoading, setConfigLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lmsPosting, setLmsPosting] = useState(false)
+  const [previewRefreshing, setPreviewRefreshing] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
   const contentLoadingRef = useRef(true)
@@ -102,6 +121,7 @@ export default function SessionComposer(
     if (operation === 'lms') setLmsPosting(true)
     if (operation === 'ai') setRewritingAll(true)
     if (operation === 'pdf') setExtractingPdf(true)
+    if (operation === 'preview') setPreviewRefreshing(true)
     return true
   }
 
@@ -111,6 +131,7 @@ export default function SessionComposer(
     if (operation === 'lms') setLmsPosting(false)
     if (operation === 'ai') setRewritingAll(false)
     if (operation === 'pdf') setExtractingPdf(false)
+    if (operation === 'preview') setPreviewRefreshing(false)
   }
 
   const commentFor = (studentId: string): StudentComment =>
@@ -198,40 +219,27 @@ export default function SessionComposer(
         })
         .filter(c => c.text.trim() !== '')
 
-      const result = await window.api.lmsPostSession({
-        classCode: cls.code,
-        sessionDate,
-        lessonContent: content.lessonContent,
-        homework: content.homework,
-        comments,
-      })
+      const { postResult: result, content: persisted } =
+        await window.api.lmsPostSessionAndSave({
+          params: {
+            classCode: cls.code,
+            sessionDate,
+            lessonContent: content.lessonContent,
+            homework: content.homework,
+            comments,
+          },
+          content,
+          students: cls.students,
+        })
       setLmsResult(result)
 
-      const absentStudentIds = mergeAbsentStudentNames(
-        cls.students,
-        content.absentStudentIds ?? [],
-        result.absentStudentNames,
-      )
-      const didPost = !result.error && result.posted.length > 0
-      const absenceChanged = absentStudentIds.length !== (content.absentStudentIds ?? []).length
-      if (didPost || absenceChanged) {
-        const updated: SessionContent = {
-          ...content,
-          absentStudentIds,
-          ...(didPost ? { postedToLms: true } : {}),
-        }
-        await window.api.saveContent(updated)
-        const persisted = await window.api.getContent(session.id)
-        const reconciled = persisted
-          ? reconcileContentWithRoster(cls, persisted)
-          : updated
-        setContent(reconciled)
-        setPreview(current => (
-          current === null || !config
-            ? null
-            : buildZaloMessage(cls, session, reconciled, config.zaloMessageTemplate)
-        ))
-      }
+      const reconciled = reconcileContentWithRoster(cls, persisted)
+      setContent(reconciled)
+      setPreview(current => (
+        current === null || !config
+          ? null
+          : buildZaloMessage(cls, session, reconciled, config.zaloMessageTemplate)
+      ))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -240,14 +248,51 @@ export default function SessionComposer(
     }
   }
 
-  const showPreview = (): void => {
+  const refreshServerMetadata = async (): Promise<SessionContent> => {
+    const stored = await window.api.getContent(session.id)
+    const merged = mergeServerMetadata(content, stored)
+    setContent(merged)
+    return merged
+  }
+
+  const showPreview = async (): Promise<void> => {
     if (
       contentLoadingRef.current
       || configLoadingRef.current
       || operationRef.current
       || !config
+      || !beginOperation('preview')
     ) return
-    setPreview(buildZaloMessage(cls, session, content, config.zaloMessageTemplate))
+    try {
+      const latest = await refreshServerMetadata()
+      setPreview(buildZaloMessage(cls, session, latest, config.zaloMessageTemplate))
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      endOperation('preview')
+    }
+  }
+
+  const copyPreview = async (): Promise<void> => {
+    if (
+      contentLoadingRef.current
+      || configLoadingRef.current
+      || operationRef.current
+      || !config
+      || !beginOperation('preview')
+    ) return
+    try {
+      const latest = await refreshServerMetadata()
+      const text = buildZaloMessage(cls, session, latest, config.zaloMessageTemplate)
+      setPreview(text)
+      await navigator.clipboard.writeText(text)
+      setError(null)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      endOperation('preview')
+    }
   }
 
   const save = async (): Promise<void> => {
@@ -265,7 +310,7 @@ export default function SessionComposer(
     }
   }
 
-  const operationBusy = saving || lmsPosting || rewritingAll || extractingPdf
+  const operationBusy = saving || lmsPosting || rewritingAll || extractingPdf || previewRefreshing
   const contentLocked = contentLoading || operationBusy
   const previewLocked = contentLocked || configLoading || !config
   const technicalSkipped = lmsResult
@@ -283,9 +328,8 @@ export default function SessionComposer(
           <span className="text-muted">· {formatSessionDate(session.dateTime) || 'buổi học'}</span>
         </div>
       </div>
-      {(configError ?? error) && (
-        <p className="alert alert-error" role="alert">{configError ?? error}</p>
-      )}
+      {configError && <p className="alert alert-error" role="alert">{configError}</p>}
+      {error && <p className="alert alert-error" role="alert">{error}</p>}
 
       <section className="section">
         <h3>Nội dung bài học</h3>
@@ -368,7 +412,9 @@ export default function SessionComposer(
       </section>
 
       <div className="action-bar">
-        <button className="btn" onClick={showPreview} disabled={previewLocked}>Xem trước Zalo</button>
+        <button className="btn" onClick={() => void showPreview()} disabled={previewLocked}>
+          Xem trước Zalo
+        </button>
         <button className="btn btn-primary" onClick={save} disabled={contentLocked}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
@@ -409,7 +455,7 @@ export default function SessionComposer(
             <h3 style={{ margin: 0 }}>Xem trước tin nhắn Zalo</h3>
             <button
               className="btn btn-sm"
-              onClick={() => void navigator.clipboard.writeText(preview)}
+              onClick={() => void copyPreview()}
               disabled={contentLocked}
             >
               Copy tin nhắn

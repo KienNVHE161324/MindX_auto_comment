@@ -108,6 +108,17 @@ export interface LmsPostResult {
   error?: string
 }
 
+export interface LmsPostSessionAndSaveRequest {
+  params: LmsPostParams
+  content: SessionContent
+  students: Student[]
+}
+
+export interface LmsPostSessionAndSaveResult {
+  postResult: LmsPostResult
+  content: SessionContent
+}
+
 export interface LmsScrapedClass {
   lmsCode: string
   name: string
@@ -157,6 +168,7 @@ export const IPC = {
   rewriteCommentsBatch: 'gemini:rewriteBatch',
   lmsOpenBrowser: 'lms:openBrowser',
   lmsPostSession: 'lms:postSession',
+  lmsPostSessionAndSave: 'lms:postSessionAndSave',
   lmsSyncAll: 'lms:syncAll',
 } as const
 
@@ -177,5 +189,8 @@ export interface AppApi {
   rewriteCommentsBatch(items: { name: string; raw: string }[]): Promise<string[]>
   lmsOpenBrowser(): Promise<{ loggedIn: boolean }>
   lmsPostSession(params: LmsPostParams): Promise<LmsPostResult>
+  lmsPostSessionAndSave(
+    request: LmsPostSessionAndSaveRequest,
+  ): Promise<LmsPostSessionAndSaveResult>
   lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
 }

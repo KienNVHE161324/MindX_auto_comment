@@ -2,7 +2,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import SessionComposer from './SessionComposer'
-import { SchoolClass, ClassSession, DEFAULT_CONFIG } from '../../../shared/types'
+import {
+  SchoolClass,
+  ClassSession,
+  DEFAULT_CONFIG,
+  LmsPostResult,
+} from '../../../shared/types'
+import { mergeAbsentStudentNames } from '../../../shared/lmsSync'
 
 function stub(overrides: Partial<Window['api']> = {}) {
   const api = {
@@ -14,7 +20,36 @@ function stub(overrides: Partial<Window['api']> = {}) {
     extractLessonFromPdf: vi.fn(async () => 'Bài học từ PDF'),
     rewriteComment: vi.fn(async () => 'Em An ngoan, tích cực.'),
     rewriteCommentsBatch: vi.fn(async (items: { name: string; raw: string }[]) => items.map(() => 'Em An ngoan, tích cực.')),
+    lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
+    lmsPostSession: vi.fn(async () => ({
+      posted: ['An'], skipped: [], absentStudentNames: [],
+    })),
+    lmsPostSessionAndSave: vi.fn(),
+    lmsSyncAll: vi.fn(),
     ...overrides,
+  }
+  if (!overrides.lmsPostSessionAndSave) {
+    api.lmsPostSessionAndSave = vi.fn(async request => {
+      const postResult: LmsPostResult = await api.lmsPostSession(request.params)
+      const absentStudentIds = mergeAbsentStudentNames(
+        request.students,
+        request.content.absentStudentIds ?? [],
+        postResult.absentStudentNames,
+      )
+      const didPost = !postResult.error && postResult.posted.length > 0
+      const absenceChanged =
+        absentStudentIds.length !== (request.content.absentStudentIds ?? []).length
+      const updated = {
+        ...request.content,
+        absentStudentIds,
+        ...(didPost ? { postedToLms: true } : {}),
+      }
+      if (didPost || absenceChanged) await api.saveContent(updated)
+      return {
+        postResult,
+        content: didPost || absenceChanged ? updated : request.content,
+      }
+    })
   }
   ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
   return api
@@ -175,6 +210,21 @@ describe('SessionComposer', () => {
     expect(screen.getByRole('button', { name: /xem trước zalo/i })).toBeDisabled()
   })
 
+  it('hiển thị đồng thời lỗi config và lỗi thao tác', async () => {
+    stub({
+      getConfig: vi.fn(async () => { throw new Error('Lỗi tải config') }),
+      extractLessonFromPdf: vi.fn(async () => { throw new Error('Lỗi đọc PDF') }),
+    })
+    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
+    expect(await screen.findByText('Lỗi tải config')).toHaveAttribute('role', 'alert')
+
+    fireEvent.click(screen.getByRole('button', { name: /nạp PDF/i }))
+
+    expect(await screen.findByText('Lỗi đọc PDF')).toHaveAttribute('role', 'alert')
+    expect(screen.getByText('Lỗi tải config')).toHaveAttribute('role', 'alert')
+    expect(screen.getAllByRole('alert')).toHaveLength(2)
+  })
+
   it('"Nạp PDF & trích" điền nội dung bài học', async () => {
     const api = stub()
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
@@ -258,6 +308,52 @@ describe('SessionComposer', () => {
     expect(pre.textContent).toContain('Làm bài 5')
   })
 
+  it('Preview lấy metadata mới nhất nhưng giữ nguyên draft chưa lưu', async () => {
+    const clsWithTwo: SchoolClass = {
+      ...cls,
+      students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
+    }
+    const initial = {
+      id: 'ss1',
+      classId: 'c1',
+      sessionId: 'ss1',
+      lessonContent: 'Bài đã lưu',
+      homework: 'BT đã lưu',
+      comments: [
+        { studentId: 's1', raw: 'Ngoan', polished: '' },
+        { studentId: 's2', raw: 'Chăm', polished: '' },
+      ],
+    }
+    const getContent = vi.fn()
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValue({
+        ...initial,
+        lessonContent: 'Bản server không được ghi đè draft',
+        comments: [
+          { studentId: 's1', raw: 'Server stale', polished: '' },
+          { studentId: 's2', raw: 'Server stale', polished: '' },
+        ],
+        absentStudentIds: ['s2'],
+        postedToLms: true,
+      })
+    stub({ getContent })
+    render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
+    const lesson = await screen.findByLabelText(/nội dung bài học/i)
+    fireEvent.change(lesson, { target: { value: 'Draft chưa lưu' } })
+    fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), {
+      target: { value: 'Draft nhận xét' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /xem trước zalo/i }))
+
+    const preview = await screen.findByLabelText(/xem trước zalo/i)
+    expect(getContent).toHaveBeenCalledTimes(2)
+    expect(preview).toHaveTextContent('Draft chưa lưu')
+    expect(preview).toHaveTextContent('An: Draft nhận xét')
+    expect(preview).toHaveTextContent('Bình: nghỉ')
+    expect(lesson).toHaveValue('Draft chưa lưu')
+  })
+
   it('"Copy tin nhắn" ghi tin xem trước vào clipboard', async () => {
     const writeText = vi.fn(async () => {})
     Object.assign(navigator, { clipboard: { writeText } })
@@ -267,7 +363,9 @@ describe('SessionComposer', () => {
     fireEvent.click(screen.getByText(/xem trước/i))
     await screen.findByLabelText(/xem trước zalo/i)
     fireEvent.click(screen.getByText(/copy tin nhắn/i))
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Phép cộng'))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining('Phép cộng'))
+    })
   })
 
   it('"Lưu" gọi saveContent', async () => {
