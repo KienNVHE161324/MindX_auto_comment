@@ -70,6 +70,109 @@ describe('AutoSendScheduler.tick', () => {
     expect(getClasses).toHaveBeenCalledTimes(2)
   })
 
+  it('khởi động chụp danh sách gửi bù nhưng chưa gửi và giữ khỏi tick định kỳ', async () => {
+    const deps = makeDeps({
+      getClasses: vi.fn(async () => [makeCls()]),
+      getContent: vi.fn(async () => makeContent()),
+    })
+    const scheduler = new AutoSendScheduler(deps)
+
+    const items = await scheduler.initializeCatchUp()
+
+    expect(items).toEqual([expect.objectContaining({
+      classId: 'c1',
+      classCode: 'A1',
+      sessionId: 'ss1',
+      channels: ['lms', 'zalo'],
+    })])
+    expect(deps.lmsPostSession).not.toHaveBeenCalled()
+    expect(deps.writeZaloMessage).not.toHaveBeenCalled()
+
+    await scheduler.tick()
+    expect(deps.lmsPostSession).not.toHaveBeenCalled()
+    expect(deps.writeZaloMessage).not.toHaveBeenCalled()
+  })
+
+  it('lớp chưa đến hạn khi mở app vẫn được tick gửi khi đến giờ', async () => {
+    let clock = new Date('2026-07-17T17:59:00')
+    const dueToday = makeCls({
+      sessions: [
+        { id: 'ss1', dateTime: '2026-07-17T14:00:00' },
+        { id: 'ss-future', dateTime: '2026-07-24T14:00:00' },
+      ],
+    })
+    const deps = makeDeps({
+      now: () => clock,
+      getClasses: vi.fn(async () => [dueToday]),
+      getContent: vi.fn(async () => makeContent()),
+    })
+    const scheduler = new AutoSendScheduler(deps)
+
+    expect(await scheduler.initializeCatchUp()).toEqual([])
+
+    clock = new Date('2026-07-17T18:01:00')
+    await scheduler.tick()
+    expect(deps.lmsPostSession).toHaveBeenCalledOnce()
+    expect(deps.writeZaloMessage).toHaveBeenCalledOnce()
+  })
+
+  it('chỉ gửi snapshot gửi bù sau khi người dùng xác nhận', async () => {
+    const deps = makeDeps({
+      getClasses: vi.fn(async () => [makeCls()]),
+      getContent: vi.fn(async () => makeContent()),
+    })
+    const scheduler = new AutoSendScheduler(deps)
+    await scheduler.initializeCatchUp()
+
+    const results = await scheduler.runCatchUp()
+
+    expect(results).toEqual([expect.objectContaining({
+      classCode: 'A1',
+      status: 'success',
+      completedChannels: ['lms', 'zalo'],
+    })])
+    expect(deps.lmsPostSession).toHaveBeenCalledOnce()
+    expect(deps.writeZaloMessage).toHaveBeenCalledOnce()
+  })
+
+  it('một lớp gửi bù lỗi không chặn lớp tiếp theo', async () => {
+    const first = makeCls()
+    const second = makeCls({
+      id: 'c2',
+      code: 'B2',
+      sessions: [
+        { id: 'ssB', dateTime: '2026-07-10T14:00:00' },
+        { id: 'ssB-future', dateTime: '2026-07-24T14:00:00' },
+      ],
+    })
+    let failFirstDuringRun = false
+    const deps = makeDeps({
+      getClasses: vi.fn(async () => [first, second]),
+      getContent: vi.fn(async (sessionId: string) => {
+        if (failFirstDuringRun && sessionId === 'ss1') {
+          throw new Error('Không đọc được content A1')
+        }
+        return makeContent({
+          id: sessionId,
+          sessionId,
+          classId: sessionId === 'ss1' ? 'c1' : 'c2',
+        })
+      }),
+    })
+    const scheduler = new AutoSendScheduler(deps)
+    await scheduler.initializeCatchUp()
+    failFirstDuringRun = true
+
+    const results = await scheduler.runCatchUp()
+
+    expect(results.map(result => result.status)).toEqual(['error', 'success'])
+    expect(deps.writeZaloMessage).toHaveBeenCalledWith(
+      'B2',
+      '2026-07-10',
+      expect.any(String),
+    )
+  })
+
   it('đọc lại content sau khi chờ mở LMS và bỏ side effect nếu trạng thái đã được cập nhật', async () => {
     let releaseBrowser!: () => void
     const browserBlocked = new Promise<void>(resolve => { releaseBrowser = resolve })

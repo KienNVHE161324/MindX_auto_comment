@@ -73,6 +73,26 @@ export interface SessionContent {
   zaloSentAt?: string
 }
 
+export type AutoSendChannel = 'lms' | 'zalo'
+
+export interface AutoSendCatchUpItem {
+  classId: string
+  classCode: string
+  className: string
+  sessionId: string
+  sessionDateTime: string
+  channels: AutoSendChannel[]
+}
+
+export interface AutoSendCatchUpResult {
+  classId: string
+  classCode: string
+  sessionId: string
+  status: 'success' | 'skipped' | 'error'
+  completedChannels: AutoSendChannel[]
+  message: string
+}
+
 export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
 Nội dung bài học:
 {noi_dung_bai_hoc}

@@ -1,7 +1,23 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { SchoolClass, ClassSession, SessionContent, LmsPostParams, LmsPostResult, AppConfig } from '../../shared/types'
-import { planAutoSend, buildZaloMessage, normalizeAutoSend } from '../../shared/autoSend'
+import {
+  SchoolClass,
+  ClassSession,
+  SessionContent,
+  LmsPostParams,
+  LmsPostResult,
+  AppConfig,
+  AutoSendCatchUpItem,
+  AutoSendCatchUpResult,
+  AutoSendChannel,
+} from '../../shared/types'
+import {
+  planAutoSend,
+  AutoSendPlan,
+  buildZaloMessage,
+  nearestPastSession,
+  normalizeAutoSend,
+} from '../../shared/autoSend'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 import type { SessionContentMetadataPatch } from '../content/ContentRepository'
 
@@ -40,8 +56,133 @@ export function writeZaloMessageToDocuments(documentsDir: string) {
 
 export class AutoSendScheduler {
   private activeTick: Promise<void> | null = null
+  private catchUpItems: AutoSendCatchUpItem[] = []
+  private readonly heldKeys = new Set<string>()
 
   constructor(private readonly deps: AutoSendDeps) {}
+
+  async initializeCatchUp(): Promise<AutoSendCatchUpItem[]> {
+    const now = this.deps.now?.() ?? new Date()
+    const classes = await this.deps.getClasses()
+    const items: AutoSendCatchUpItem[] = []
+
+    for (const cls of classes) {
+      try {
+        const session = nearestPastSession(cls.sessions, now)
+        const content = session ? await this.deps.getContent(session.id) : null
+        const plan = planAutoSend(cls, content, now)
+        if (!plan) continue
+        const channels: AutoSendChannel[] = []
+        if (plan.needLms) channels.push('lms')
+        if (plan.needZalo) channels.push('zalo')
+        items.push({
+          classId: cls.id,
+          classCode: cls.code,
+          className: cls.name,
+          sessionId: plan.session.id,
+          sessionDateTime: plan.session.dateTime,
+          channels,
+        })
+        this.heldKeys.add(this.key(cls.id, plan.session.id))
+      } catch (err) {
+        this.deps.log?.(
+          `[AutoSend] Không lập được lịch gửi bù ${cls.code}: ${(err as Error).message}`,
+        )
+      }
+    }
+
+    this.catchUpItems = items
+    return this.getCatchUpItems()
+  }
+
+  getCatchUpItems(): AutoSendCatchUpItem[] {
+    return this.catchUpItems.map(item => ({
+      ...item,
+      channels: [...item.channels],
+    }))
+  }
+
+  async runCatchUp(): Promise<AutoSendCatchUpResult[]> {
+    if (this.activeTick) await this.activeTick
+    const task = this.runCatchUpItems()
+    this.activeTick = task.then(() => undefined)
+    try {
+      return await task
+    } finally {
+      this.activeTick = null
+    }
+  }
+
+  private async runCatchUpItems(): Promise<AutoSendCatchUpResult[]> {
+    const now = this.deps.now?.() ?? new Date()
+    const classes = await this.deps.getClasses()
+    const results: AutoSendCatchUpResult[] = []
+    const remaining: AutoSendCatchUpItem[] = []
+    const log = this.deps.log ?? (() => {})
+
+    for (const item of this.catchUpItems) {
+      const cls = classes.find(candidate => candidate.id === item.classId)
+      if (!cls) {
+        results.push(this.catchUpResult(item, [], 'skipped', 'Lớp không còn tồn tại.'))
+        remaining.push(item)
+        continue
+      }
+      try {
+        const content = await this.deps.getContent(item.sessionId)
+        const plan = planAutoSend(cls, content, now)
+        if (!plan || plan.session.id !== item.sessionId) {
+          results.push(this.catchUpResult(
+            item,
+            [],
+            'skipped',
+            'Nội dung hoặc trạng thái gửi đã thay đổi.',
+          ))
+          remaining.push(item)
+          continue
+        }
+        const completed = await this.executePlan(cls, plan, log, item.channels)
+        const requested = item.channels.filter(channel =>
+          channel === 'lms' ? plan.needLms : plan.needZalo,
+        )
+        const success = requested.length > 0
+          && requested.every(channel => completed.includes(channel))
+        results.push(this.catchUpResult(
+          item,
+          completed,
+          success ? 'success' : 'error',
+          success ? 'Đã gửi các kênh đã chọn.' : 'Không gửi được đầy đủ các kênh đã chọn.',
+        ))
+        if (success) this.heldKeys.delete(this.key(item.classId, item.sessionId))
+        else remaining.push(item)
+      } catch (err) {
+        results.push(this.catchUpResult(item, [], 'error', (err as Error).message))
+        remaining.push(item)
+      }
+    }
+
+    this.catchUpItems = remaining
+    return results
+  }
+
+  private catchUpResult(
+    item: AutoSendCatchUpItem,
+    completedChannels: AutoSendChannel[],
+    status: AutoSendCatchUpResult['status'],
+    message: string,
+  ): AutoSendCatchUpResult {
+    return {
+      classId: item.classId,
+      classCode: item.classCode,
+      sessionId: item.sessionId,
+      status,
+      completedChannels,
+      message,
+    }
+  }
+
+  private key(classId: string, sessionId: string): string {
+    return `${classId}:${sessionId}`
+  }
 
   /** Chạy 1 lượt kiểm tra tất cả lớp; gửi cho lớp nào tới giờ hẹn và còn thiếu LMS/Zalo. Không throw ra ngoài — lỗi 1 lớp không chặn lớp khác. */
   tick(): Promise<void> {
@@ -76,7 +217,11 @@ export class AutoSendScheduler {
     }
   }
 
-  private async processClass(cls: SchoolClass, now: Date, log: (msg: string) => void): Promise<void> {
+  private async processClass(
+    cls: SchoolClass,
+    now: Date,
+    log: (msg: string) => void,
+  ): Promise<void> {
     const autoSend = normalizeAutoSend(cls.autoSend)
     if (!autoSend.lmsEnabled && !autoSend.zaloEnabled) return
 
@@ -86,18 +231,30 @@ export class AutoSendScheduler {
 
     const plan = planAutoSend(cls, content, now)
     if (!plan) return
+    if (this.heldKeys.has(this.key(cls.id, plan.session.id))) return
 
     log(`[AutoSend] ${cls.code}: buổi ${plan.session.dateTime} — needLms=${plan.needLms} needZalo=${plan.needZalo}`)
+    await this.executePlan(cls, plan, log)
+  }
 
+  private async executePlan(
+    cls: SchoolClass,
+    plan: AutoSendPlan,
+    log: (msg: string) => void,
+    allowedChannels: AutoSendChannel[] = ['lms', 'zalo'],
+  ): Promise<AutoSendChannel[]> {
     let updated = plan.content
+    const completed: AutoSendChannel[] = []
 
-    if (plan.needLms) {
+    if (plan.needLms && allowedChannels.includes('lms')) {
       updated = await this.sendLms(cls, plan.session, updated, log)
+      if (updated.postedToLms) completed.push('lms')
     }
-    if (plan.needZalo && !updated.zaloSentAt) {
+    if (plan.needZalo && allowedChannels.includes('zalo') && !updated.zaloSentAt) {
       updated = await this.sendZalo(cls, plan.session, updated, log)
+      if (updated.zaloSentAt) completed.push('zalo')
     }
-
+    return completed
   }
 
   private async sendLms(
