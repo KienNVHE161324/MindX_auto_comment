@@ -192,6 +192,7 @@ export default function SessionComposer(
   }
 
   const showPreview = (): void => {
+    if (contentLoadingRef.current || savingRef.current || lmsPostingRef.current) return
     setPreview(buildZaloMessage(cls, session, content, config.zaloMessageTemplate))
   }
 
@@ -305,7 +306,7 @@ export default function SessionComposer(
       </section>
 
       <div className="action-bar">
-        <button className="btn" onClick={showPreview}>Xem trước Zalo</button>
+        <button className="btn" onClick={showPreview} disabled={contentLocked}>Xem trước Zalo</button>
         <button className="btn btn-primary" onClick={save} disabled={contentLocked}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
@@ -336,7 +337,13 @@ export default function SessionComposer(
         <section className="section">
           <div className="row-between" style={{ marginBottom: 10 }}>
             <h3 style={{ margin: 0 }}>Xem trước tin nhắn Zalo</h3>
-            <button className="btn btn-sm" onClick={() => void navigator.clipboard.writeText(preview)}>Copy tin nhắn</button>
+            <button
+              className="btn btn-sm"
+              onClick={() => void navigator.clipboard.writeText(preview)}
+              disabled={contentLocked}
+            >
+              Copy tin nhắn
+            </button>
           </div>
           <pre
             aria-label="Xem trước Zalo"

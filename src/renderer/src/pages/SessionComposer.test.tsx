@@ -77,9 +77,13 @@ describe('SessionComposer', () => {
     render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
 
     const lmsButton = screen.getByRole('button', { name: /gửi lên lms/i })
+    const previewButton = screen.getByRole('button', { name: /xem trước zalo/i })
     expect(lmsButton).toBeDisabled()
+    expect(previewButton).toBeDisabled()
     expect(screen.getByLabelText(/nội dung bài học/i)).toBeDisabled()
     expect(screen.getByRole('button', { name: /^lưu$/i })).toBeDisabled()
+    fireEvent.click(previewButton)
+    expect(screen.queryByLabelText(/xem trước zalo/i)).not.toBeInTheDocument()
     fireEvent.click(lmsButton)
     expect(api.lmsPostSession).not.toHaveBeenCalled()
 
@@ -96,7 +100,13 @@ describe('SessionComposer', () => {
       absentStudentIds: ['s2'],
     })
     await waitFor(() => expect(lmsButton).toBeEnabled())
+    expect(previewButton).toBeEnabled()
     expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài đã lưu')
+
+    fireEvent.click(previewButton)
+    const preview = await screen.findByLabelText(/xem trước zalo/i)
+    expect(preview.textContent).toContain('Bài đã lưu')
+    expect(preview.textContent).toContain('Bình: nghỉ')
 
     fireEvent.click(lmsButton)
     await waitFor(() => expect(api.lmsPostSession).toHaveBeenCalledWith({
