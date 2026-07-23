@@ -12,6 +12,77 @@ const TIMEOUT = 30_000
 const CDP_PORT = 9222
 const LOGIN_WAIT_MS = 180_000
 
+export function getLmsTabPattern(tabName: string): RegExp {
+  if (tabName === 'Nhận xét') return /^(Nhận xét|Comments)$/i
+  return new RegExp(tabName, 'i')
+}
+
+export function getLmsTabReadySelector(tabName: string): string | null {
+  if (tabName === 'Nhận xét') {
+    return '#detail-content [id^="class-comments-slot-carousel-"]'
+  }
+  return null
+}
+
+export function getLmsSectionPattern(section: 'summary' | 'homework'): RegExp {
+  return section === 'summary'
+    ? /^(Tổng\s*k\S*|Summary)$/i
+    : /^(Bài.*nhà|Homework)$/i
+}
+
+export function getLmsSectionEditorSelector(): string {
+  return '[contenteditable="true"], textarea, input[type="text"], .ql-editor, .ProseMirror'
+}
+
+export function getAbsentStudentPattern(): RegExp {
+  return /không thể viết nhận xét|cannot comment on absent student/i
+}
+
+export function getLmsOverwriteAction(
+  _existing: string,
+  incoming: string,
+): 'replace' | 'skip' {
+  return incoming.trim() ? 'replace' : 'skip'
+}
+
+export function getStudentCommentEditorSelector(): string {
+  return '.ql-editor[contenteditable="true"]'
+}
+
+export function getStudentCommentManualModeSelector(): string {
+  return '[aria-label="In by-areas mode, click to switch to manual mode"]'
+}
+
+export function getLmsDrawerRefreshSelector(): string {
+  return '#detail-content header button:has(svg[data-testid="RefreshIcon"])'
+}
+
+export function getStudentCommentButtonPattern(): RegExp {
+  return /nhận xét học sinh/i
+}
+
+export function makeLmsPostResult(
+  posted: string[],
+  absentStudentNames: string[],
+  skipped: string[],
+): LmsPostResult {
+  return { posted, absentStudentNames, skipped }
+}
+
+export function shouldWriteLmsSection(text: string): boolean {
+  return getLmsOverwriteAction('', text) === 'replace'
+}
+
+export function getCommentSessionDatePattern(sessionDate: string): RegExp {
+  const [, month, day] = sessionDate.split('-')
+  return new RegExp(`\\b${day}[/-]${month}\\b`)
+}
+
+export function getCommentSessionDateTextPattern(sessionDate: string): RegExp {
+  const [year, month, day] = sessionDate.split('-')
+  return new RegExp(`^(?:\\d{2}:\\d{2}\\s+)?${day}[/-]${month}(?:[/-]${year})?$`)
+}
+
 function checkCdpAvailable(): Promise<boolean> {
   return new Promise(resolve => {
     const req = http.get(`http://localhost:${CDP_PORT}/json/version`, res => {
@@ -145,7 +216,9 @@ export class LmsAutomator {
     await this.clickTab(page, 'Nhận xét')
     await this.selectSession(page, params.sessionDate)
     await this.fillTongKet(page, params.lessonContent)
-    await this.fillHomework(page, params.homework)
+    if (shouldWriteLmsSection(params.homework)) {
+      await this.fillHomework(page, params.homework)
+    }
     return await this.processComments(page, params.comments)
   }
 
@@ -260,83 +333,168 @@ export class LmsAutomator {
   }
 
   private async findAndOpenClass(page: Page, classCode: string): Promise<void> {
-    await page.goto(`${this.baseUrl}/admin/classes?tab=0`, {
-      waitUntil: 'networkidle',
-      timeout: TIMEOUT,
-    })
-
-    const row = page.locator('table tbody tr').filter({ hasText: classCode }).first()
-    if ((await row.count()) === 0) {
-      throw new Error(`Không tìm thấy lớp "${classCode}" trong danh sách LMS.`)
-    }
-
-    await row.locator('a').first().click()
-    await page.waitForLoadState('networkidle', { timeout: TIMEOUT })
+    await this.openClassDrawer(page, classCode)
   }
 
+  /**
+   * Mở drawer chi tiết lớp từ danh sách /admin/classes.
+   * Danh sách KHÔNG có link <a>; vào lớp qua nút "Xem chi tiết"/"View detail"
+   * (span[aria-label] chứa button), bị display:none tới khi hover → JS click để tránh
+   * mất hover state khi Playwright di chuột. Drawer mở bên phải, không điều hướng trang.
+   */
+  private async openClassDrawer(page: Page, code: string): Promise<void> {
+    await page.goto(this.LIST_URL, { waitUntil: 'networkidle', timeout: TIMEOUT })
+    await page.waitForSelector('[class*="MuiTableRow-hover"]', { timeout: 15_000 })
+
+    const row = page
+      .locator('[class*="MuiTableRow-hover"]')
+      .filter({ has: page.locator('pre').filter({ hasText: new RegExp(`^${code}$`) }) })
+      .first()
+    if ((await row.count()) === 0) {
+      throw new Error(`Không tìm thấy lớp "${code}" trong danh sách LMS.`)
+    }
+    await row.scrollIntoViewIfNeeded()
+
+    await page.evaluate((codeStr) => {
+      const pre = Array.from(document.querySelectorAll('[class*="MuiTableRow-hover"] pre'))
+        .find(p => p.textContent?.trim() === codeStr)
+      if (!pre) throw new Error(`Không tìm thấy pre với mã ${codeStr}`)
+      const btn = pre
+        .closest('[class*="MuiTableRow-hover"]')
+        ?.querySelector(
+          'span[aria-label="View detail"] button, span[aria-label="Xem chi tiết"] button',
+        ) as HTMLElement | null
+      if (!btn) throw new Error(`Không tìm thấy nút xem chi tiết cho ${codeStr}`)
+      btn.click()
+    }, code)
+
+    // Drawer mở → header hiện mã lớp
+    const drawerHeader = page
+      .locator('[aria-labelledby="class-detail"] h6')
+      .filter({ hasText: code })
+    await drawerHeader.waitFor({ state: 'visible', timeout: 15_000 })
+    console.log(`[LMS] Drawer ${code} đã mở`)
+  }
+
+  /** Click tab trong drawer chi tiết lớp (scope vào #detail-content để tránh nhầm tab list ngoài). */
   private async clickTab(page: Page, tabName: string): Promise<void> {
     const tab = page
-      .locator('[role="tab"]')
-      .filter({ hasText: new RegExp(tabName, 'i') })
+      .locator('#detail-content [role="tab"]')
+      .filter({ hasText: getLmsTabPattern(tabName) })
       .first()
     await tab.click({ timeout: TIMEOUT })
-    // Chờ GraphQL load (React SPA — networkidle không đủ)
+    // React tải dữ liệu tab qua GraphQL sau khi click; chờ đúng nội dung thay vì đoán thời gian.
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
-    await page.waitForTimeout(500)
+    const readySelector = getLmsTabReadySelector(tabName)
+    if (readySelector) {
+      try {
+        await page.waitForSelector(readySelector, { state: 'visible', timeout: TIMEOUT })
+      } catch {
+        // GraphQL của tab Comments đôi lúc treo spinner; refresh drawer một lần rồi thử lại.
+        await page.locator(getLmsDrawerRefreshSelector()).click({ timeout: 5_000 })
+        try {
+          await page.waitForSelector(readySelector, { state: 'visible', timeout: TIMEOUT })
+        } catch {
+          const debugPath = path.join(this.debugDir, 'lms-comments-loading-debug.html')
+          fs.writeFileSync(debugPath, await page.content(), 'utf8')
+          throw new Error(`LMS không tải được dữ liệu tab Comments sau khi Refresh. HTML debug: ${debugPath}`)
+        }
+      }
+    } else {
+      await page.waitForTimeout(500)
+    }
   }
 
   private async selectSession(page: Page, sessionDate: string): Promise<void> {
     const [year, month, day] = sessionDate.split('-')
     const display = `${day}/${month}/${year}`
-
-    let btn = page.locator('button, a, [class*="session"], [class*="buoi"]').filter({ hasText: display }).first()
-
-    if ((await btn.count()) === 0) {
-      btn = page
-        .locator('button:not([disabled]), a')
-        .filter({ hasText: new RegExp(`${day}[/-]${month}|${month}[/-]${day}`, 'i') })
-        .first()
+    if (!(await this.selectCommentSession(page, sessionDate))) {
+      const slots = await page
+        .locator('[id^="class-comments-slot-carousel-"]')
+        .evaluateAll(elements => elements.map(el => ({
+          id: el.id,
+          text: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          className: el.className,
+        })))
+        .catch(() => [])
+      const debugPath = path.join(this.debugDir, 'lms-post-session-debug.html')
+      fs.writeFileSync(debugPath, await page.content(), 'utf8')
+      const visible = slots.length > 0
+        ? slots.map(slot => `${slot.text || slot.id}${slot.className.includes('disabled') ? ' [disabled]' : ''}`).join(', ')
+        : 'không có slot carousel nào'
+      throw new Error(
+        `Không tìm thấy buổi học ngày ${display}. Các buổi đang hiển thị: ${visible}. HTML debug: ${debugPath}`,
+      )
     }
-
-    if ((await btn.count()) === 0) {
-      throw new Error(`Không tìm thấy buổi học ngày ${display}.`)
-    }
-
-    await btn.click({ timeout: TIMEOUT })
-    await page.waitForTimeout(800)
   }
 
   // ─── Fill content ──────────────────────────────────────────────────────────
 
+  // Site viết sai chính tả "Tổng két" → dùng /tổng\s*k/i (khớp cả "Tổng kết"/"Tổng két").
   private async fillTongKet(page: Page, content: string): Promise<void> {
-    const section = page.locator('*').filter({ hasText: /tổng kết/i }).last()
-    const editor = section.locator('[contenteditable="true"], .ql-editor, .ProseMirror, textarea').first()
-
-    if ((await editor.count()) === 0) {
-      const fallback = page.locator('[contenteditable="true"]').first()
-      await fallback.click()
-      await page.keyboard.press('Control+A')
-      await fallback.type(content)
-      return
-    }
-
-    await editor.click()
-    await page.keyboard.press('Control+A')
-    await editor.type(content)
-    await page.waitForTimeout(300)
+    await this.writeExpandableSection(page, getLmsSectionPattern('summary'), content)
   }
 
   private async fillHomework(page: Page, homework: string): Promise<void> {
-    const section = page.locator('*').filter({ hasText: /bài.*nhà/i }).last()
-    const input = section.locator('textarea, input, [contenteditable="true"]').first()
+    await this.writeExpandableSection(page, getLmsSectionPattern('homework'), homework)
+  }
 
-    if ((await input.count()) > 0) {
-      await input.click()
-      await input.fill(homework)
-    } else {
-      await page.locator('textarea, input[type="text"]').nth(1).fill(homework)
+  /**
+   * Điền nội dung vào khối Tổng kết/Bài về nhà (rich editor trong drawer).
+   * Tái dùng findSectionHeader để định vị theo text, mở khối nếu đang thu gọn.
+   */
+  private async writeExpandableSection(page: Page, headerRegex: RegExp, text: string): Promise<void> {
+    const header = await this.findSectionHeader(page, headerRegex)
+    if (!header) {
+      const debugPath = path.join(this.debugDir, 'lms-content-section-debug.html')
+      fs.writeFileSync(debugPath, await page.content(), 'utf8')
+      const tabText = await page
+        .locator('#detail-content [role="tabpanel"]:not([hidden])')
+        .innerText()
+        .catch(() => '')
+      throw new Error(
+        `Không tìm thấy khối nội dung khớp ${headerRegex}. Nội dung tab: ${tabText.replace(/\s+/g, ' ').trim().slice(0, 500)}. HTML debug: ${debugPath}`,
+      )
     }
-    await page.waitForTimeout(300)
+
+    const collapsed = (await header.locator('svg[data-testid="ExpandMoreIcon"]').count()) > 0
+    if (collapsed) {
+      await header.click({ timeout: TIMEOUT })
+      await page.waitForTimeout(500)
+    }
+
+    const content = header.locator('xpath=following-sibling::div[1]')
+    const editorSelector = getLmsSectionEditorSelector()
+    let editor = content.locator(editorSelector).first()
+
+    if ((await editor.count()) === 0) {
+      const display = content.locator('p, .place-holder').first()
+      if ((await display.count()) > 0) await display.click({ timeout: TIMEOUT })
+
+      editor = content
+        .locator(editorSelector)
+        .or(page.locator('[role="dialog"]:visible').last().locator(editorSelector))
+        .first()
+      try {
+        await editor.waitFor({ state: 'visible', timeout: 5_000 })
+      } catch {
+        const debugPath = path.join(this.debugDir, 'lms-section-editor-debug.html')
+        fs.writeFileSync(debugPath, await page.content(), 'utf8')
+        throw new Error(`Đã click khối nội dung nhưng LMS không mở editor. HTML debug: ${debugPath}`)
+      }
+    }
+
+    await editor.fill(text)
+
+    const dialog = editor.locator('xpath=ancestor::*[@role="dialog"][1]')
+    if ((await dialog.count()) > 0) {
+      const save = dialog.locator('button').filter({ hasText: /lưu|save|update|xác nhận|ok/i }).first()
+      await save.click({ timeout: TIMEOUT })
+      await dialog.waitFor({ state: 'hidden', timeout: TIMEOUT })
+    } else {
+      await page.keyboard.press('Tab')
+      await page.waitForTimeout(500)
+    }
   }
 
   // ─── Student comments ──────────────────────────────────────────────────────
@@ -347,22 +505,28 @@ export class LmsAutomator {
   ): Promise<LmsPostResult> {
     const posted: string[] = []
     const skipped: string[] = []
+    const absentStudentNames: string[] = []
+    const seenStudents = new Set<string>()
 
-    const rows = page.locator('table tbody tr')
+    // Bảng HS trong tab "Nhận xét" (scope tránh nhầm table danh sách lớp bên ngoài)
+    const rows = page.locator('div.comment-list-table table tbody tr')
     const rowCount = await rows.count()
 
     for (let i = 0; i < rowCount; i++) {
       const row = rows.nth(i)
-      const cells = row.locator('td')
 
-      const rawName = ((await cells.nth(0).textContent()) ?? '').trim()
-      const studentName = rawName.split('\n')[0].trim()
+      const studentName = ((await row.locator('.name-display').first().textContent()) ?? '').trim()
       if (!studentName) continue
+      const studentKey = studentName.toLocaleLowerCase('vi')
+      if (seenStudents.has(studentKey)) continue
+      seenStudents.add(studentKey)
 
+      // HS nghỉ: ô Comment hiện "Không thể viết nhận xét cho học viên vắng mặt"
       const isAbsent =
-        (await row.locator('*').filter({ hasText: /vắng mặt|nghỉ có phép/i }).count()) > 0
+        (await row.locator('td').nth(1).locator('*').filter({ hasText: getAbsentStudentPattern() }).count()) > 0
 
       if (isAbsent) {
+        absentStudentNames.push(studentName)
         skipped.push(studentName)
         continue
       }
@@ -378,61 +542,59 @@ export class LmsAutomator {
         continue
       }
 
+      let popup: Locator | null = null
       try {
-        await cells.nth(1).click({ timeout: 5000 })
+        const openComment = row
+          .locator('button')
+          .filter({ hasText: getStudentCommentButtonPattern() })
+          .first()
+        await openComment.scrollIntoViewIfNeeded()
+        await openComment.evaluate(element => (element as HTMLElement).click())
 
-        const popup = page.locator('[role="dialog"], .modal, [class*="popup"], [class*="modal"]').last()
+        popup = page.locator('[role="dialog"]').last()
         await popup.waitFor({ state: 'visible', timeout: 8000 })
 
-        // Nếu HS đã có nhận xét trên LMS → KHÔNG ghi đè, bỏ qua.
-        const existing = await this.readPopupExistingComment(popup)
-        if (existing) {
-          await page.keyboard.press('Escape').catch(() => {})
-          await popup.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
-          await page.waitForTimeout(200)
-          skipped.push(`${studentName} (đã có nhận xét, không ghi đè)`)
-          continue
+        // Luôn thay nội dung cũ bằng bản mới trong app; chỉ bỏ qua khi bản mới trống.
+        const commentArea = popup.locator('table td p').first()
+        await commentArea.click({ timeout: 5000 })
+
+        const manualMode = popup.locator(getStudentCommentManualModeSelector()).first()
+        if ((await manualMode.count()) > 0 && await manualMode.isVisible()) {
+          await manualMode.click({ timeout: 5000 })
         }
 
-        const textarea = popup.locator('textarea, [contenteditable="true"], input[type="text"]').first()
-        await textarea.click()
-        await textarea.fill(commentData.text)
+        const editor = popup.locator(getStudentCommentEditorSelector()).first()
+        await editor.waitFor({ state: 'visible', timeout: 8000 })
+        await editor.fill(commentData.text)
 
-        const saveBtn = popup
-          .locator('button')
-          .filter({ hasText: /lưu|xác nhận|ok|save|submit/i })
-          .first()
-        await saveBtn.click({ timeout: 5000 })
+        const written = ((await editor.innerText().catch(() => '')) ?? '').trim()
+        if (!written.includes(commentData.text.trim())) {
+          const debugPath = path.join(this.debugDir, 'lms-student-comment-editor-debug.html')
+          fs.writeFileSync(debugPath, await page.content(), 'utf8')
+          throw new Error(`LMS chưa nhận nội dung sau khi click vùng comment. HTML debug: ${debugPath}`)
+        }
 
+        const save = popup.locator('button').filter({ hasText: /^Save$|^Lưu$/i }).first()
+        await save.click({ timeout: 5000 })
+        await page.waitForTimeout(300)
+        if (await popup.isVisible().catch(() => false)) {
+          await page.keyboard.press('Escape')
+        }
         await popup.waitFor({ state: 'hidden', timeout: 5000 })
         await page.waitForTimeout(300)
         posted.push(studentName)
       } catch (err) {
         skipped.push(`${studentName} (lỗi: ${(err as Error).message.slice(0, 60)})`)
+      } finally {
+        if (popup && await popup.isVisible().catch(() => false)) {
+          await page.keyboard.press('Escape').catch(() => {})
+          await popup.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {})
+          await page.waitForTimeout(200)
+        }
       }
     }
 
-    return { posted, skipped }
-  }
-
-  /**
-   * Đọc nhận xét đang có trong popup (nếu có). Trả về '' nếu trống/placeholder.
-   * Ưu tiên editor thật của LMS (div.jss2722), fallback textarea/contenteditable chung.
-   */
-  private async readPopupExistingComment(popup: Locator): Promise<string> {
-    const el = popup.locator('div.jss2722, [contenteditable="true"], textarea, input[type="text"]').first()
-    if ((await el.count()) === 0) return ''
-
-    const isPlaceholder = await el
-      .evaluate(e => e.className.includes('place-holder'))
-      .catch(() => false)
-    if (isPlaceholder) return ''
-
-    const viaValue = await el.inputValue().catch(() => '')
-    if (viaValue.trim()) return viaValue.trim()
-
-    const viaText = ((await el.textContent().catch(() => '')) ?? '').trim()
-    return viaText
+    return makeLmsPostResult(posted, absentStudentNames, skipped)
   }
 
   // ─── Auto-login ────────────────────────────────────────────────────────────
@@ -529,47 +691,14 @@ export class LmsAutomator {
     code: string,
     name: string,
   ): Promise<LmsScrapedClass> {
-    // Luôn về list để bắt đầu sạch (tránh drawer cũ còn mở)
-    await page.goto(this.LIST_URL, { waitUntil: 'networkidle', timeout: TIMEOUT })
-    await page.waitForSelector('[class*="MuiTableRow-hover"]', { timeout: 15_000 })
-
-    // Tìm row chứa <pre> có text = code
-    const row = page
-      .locator('[class*="MuiTableRow-hover"]')
-      .filter({ has: page.locator('pre').filter({ hasText: new RegExp(`^${code}$`) }) })
-      .first()
-
-    if ((await row.count()) === 0) {
-      throw new Error(`Không tìm thấy row cho mã "${code}"`)
-    }
-
-    // Button "View detail" ẩn bởi CSS (display:none), chỉ hiện khi hover.
-    // Dùng JS click để tránh race condition: Playwright scroll/move chuột làm mất hover state
-    // → button trở về display:none → click({ force:true }) vẫn fail vì bounding box = 0.
-    await row.scrollIntoViewIfNeeded()
-    await page.evaluate((codeStr) => {
-      const pre = Array.from(document.querySelectorAll('[class*="MuiTableRow-hover"] pre'))
-        .find(p => p.textContent?.trim() === codeStr)
-      if (!pre) throw new Error(`Không tìm thấy pre với mã ${codeStr}`)
-      const btn = pre
-        .closest('[class*="MuiTableRow-hover"]')
-        ?.querySelector('span[aria-label="View detail"] button') as HTMLElement | null
-      if (!btn) throw new Error(`Không tìm thấy nút "View detail" cho ${codeStr}`)
-      btn.click()
-    }, code)
-
-    // "View detail" mở right drawer (không navigate) — chờ header drawer hiện mã lớp
-    const drawerHeader = page
-      .locator('[aria-labelledby="class-detail"] h6')
-      .filter({ hasText: code })
-    await drawerHeader.waitFor({ state: 'visible', timeout: 15_000 })
-    console.log(`[LMS] Drawer ${code} đã mở`)
+    // Mở drawer chi tiết (tái dùng helper chung)
+    await this.openClassDrawer(page, code)
 
     // Click tab "Schedule" trong drawer để load danh sách buổi học
     // (scope vào #detail-content tránh nhầm tab "Attendance" của class list bên ngoài)
     const scheduleTab = page
       .locator('#detail-content [role="tab"]')
-      .filter({ hasText: /^Schedule$/ })
+      .filter({ hasText: /^(Schedule|Lịch học)$/ })
       .first()
     await scheduleTab.click({ timeout: 8_000 })
     await page.waitForSelector('input[placeholder="DD/MM/YYYY"]', { timeout: 10_000 })
@@ -585,7 +714,7 @@ export class LmsAutomator {
     // Click tab "Students" trong drawer để load danh sách học sinh
     const studentsTab = page
       .locator('#detail-content [role="tab"]')
-      .filter({ hasText: /^Students$/ })
+      .filter({ hasText: /^(Students|Học viên)$/ })
       .first()
     await studentsTab.click({ timeout: 8_000 })
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
@@ -684,10 +813,10 @@ export class LmsAutomator {
       return null
     }
 
-    const lessonContent = await this.readExpandableSection(page, /tổng\s*k/i)
+    const lessonContent = await this.readExpandableSection(page, getLmsSectionPattern('summary'))
     if (!lessonContent) return null  // chưa điền Tổng kết -> buổi chưa có nội dung
 
-    const homework = (await this.readExpandableSection(page, /bài.*nhà/i)) ?? ''
+    const homework = (await this.readExpandableSection(page, getLmsSectionPattern('homework'))) ?? ''
     const students = await this.readStudentComments(page)
 
     return { classCode: target.classCode, sessionDate: target.sessionDate, lessonContent, homework, students }
@@ -695,11 +824,15 @@ export class LmsAutomator {
 
   /** Chọn buổi trong carousel tab "Nhận xét" theo ngày 'YYYY-MM-DD'. Trả về false nếu không tìm thấy. */
   private async selectCommentSession(page: Page, sessionDate: string): Promise<boolean> {
-    const [, month, day] = sessionDate.split('-')
-    const slot = page
-      .locator('[id^="class-comments-slot-carousel-"]')
-      .filter({ hasText: new RegExp(`\\b${day}[/-]${month}\\b`) })
+    const dateText = page
+      .locator('[id^="class-comments-slot-carousel-"] .info-container > div')
+      .filter({ hasText: getCommentSessionDateTextPattern(sessionDate) })
       .first()
+
+    if ((await dateText.count()) === 0) return false
+
+    const slot = dateText
+      .locator('xpath=ancestor::div[starts-with(@id,"class-comments-slot-carousel-")][1]')
 
     if ((await slot.count()) === 0) return false
 
@@ -716,22 +849,44 @@ export class LmsAutomator {
    * Trả về null nếu không tìm thấy khối; '' nếu khối có nhưng đang trống (placeholder).
    */
   private async readExpandableSection(page: Page, headerRegex: RegExp): Promise<string | null> {
-    const block = page.locator('div.jss2713.jss2705').filter({ hasText: headerRegex }).first()
-    if ((await block.count()) === 0) return null
+    // Số class jss (jss3524/jss3533...) đổi giữa các build LMS → match theo TEXT header + cấu trúc.
+    // Cấu trúc: <section><header row (chứa svg Expand + <span> label)><content wrapper>...</section>
+    const header = await this.findSectionHeader(page, headerRegex)
+    if (!header) return null
 
-    const isCollapsed = (await block.locator('svg[data-testid="ExpandMoreIcon"]').count()) > 0
-    if (isCollapsed) {
-      await block.locator('div.jss2712').first().click({ timeout: TIMEOUT })
+    const collapsed = (await header.locator('svg[data-testid="ExpandMoreIcon"]').count()) > 0
+    if (collapsed) {
+      await header.click({ timeout: TIMEOUT })
       await page.waitForTimeout(500)
     }
 
-    const contentEl = block.locator('div.jss2722').first()
-    if ((await contentEl.count()) === 0) return ''
+    // Nội dung là div ngay sau header row trong cùng section
+    const content = header.locator('xpath=following-sibling::div[1]')
+    if ((await content.count()) === 0) return ''
 
-    const isPlaceholder = await contentEl.evaluate(el => el.className.includes('place-holder'))
-    if (isPlaceholder) return ''
+    // Trống: có phần tử con mang class "place-holder"
+    if ((await content.locator('.place-holder').count()) > 0) return ''
 
-    return ((await contentEl.textContent()) ?? '').trim()
+    return ((await content.innerText().catch(() => '')) ?? '').trim()
+  }
+
+  /**
+   * Tìm "header row" của khối Tổng kết/Bài về nhà theo text label.
+   * Header row = tổ tiên div gần nhất của <span> label mà có chứa icon Expand (thu/mở).
+   * Trả về null nếu không có khối.
+   */
+  private async findSectionHeader(page: Page, headerRegex: RegExp): Promise<Locator | null> {
+    // Header row = div SÂU NHẤT chứa cả TEXT label lẫn icon Expand (thu/mở).
+    // .last() vì tổ tiên (section, tabpanel) cũng khớp; div bắt đầu muộn nhất = header row.
+    const header = page
+      .locator('#detail-content div')
+      .filter({ hasText: headerRegex })
+      .filter({
+        has: page.locator('svg[data-testid="ExpandLessIcon"], svg[data-testid="ExpandMoreIcon"]'),
+      })
+      .last()
+    if ((await header.count()) === 0) return null
+    return header
   }
 
   /** Đọc điểm danh + nhận xét đã lưu của từng học sinh trong tab "Nhận xét". */
