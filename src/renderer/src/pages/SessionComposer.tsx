@@ -51,7 +51,7 @@ function mergeServerMetadata(
   return merged
 }
 
-type ComposerOperation = 'save' | 'lms' | 'ai' | 'pdf' | 'preview'
+type ComposerOperation = 'save' | 'lms' | 'zalo' | 'ai' | 'pdf' | 'preview'
 
 export default function SessionComposer(
   { cls, session, onDone }: { cls: SchoolClass; session: ClassSession; onDone: () => void },
@@ -68,6 +68,11 @@ export default function SessionComposer(
   const [configLoading, setConfigLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [lmsPosting, setLmsPosting] = useState(false)
+  const [zaloPosting, setZaloPosting] = useState(false)
+  const [zaloStatus, setZaloStatus] = useState<{
+    message: string
+    success: boolean
+  } | null>(null)
   const [previewRefreshing, setPreviewRefreshing] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
@@ -119,6 +124,7 @@ export default function SessionComposer(
     operationRef.current = operation
     if (operation === 'save') setSaving(true)
     if (operation === 'lms') setLmsPosting(true)
+    if (operation === 'zalo') setZaloPosting(true)
     if (operation === 'ai') setRewritingAll(true)
     if (operation === 'pdf') setExtractingPdf(true)
     if (operation === 'preview') setPreviewRefreshing(true)
@@ -129,6 +135,7 @@ export default function SessionComposer(
     if (operationRef.current === operation) operationRef.current = null
     if (operation === 'save') setSaving(false)
     if (operation === 'lms') setLmsPosting(false)
+    if (operation === 'zalo') setZaloPosting(false)
     if (operation === 'ai') setRewritingAll(false)
     if (operation === 'pdf') setExtractingPdf(false)
     if (operation === 'preview') setPreviewRefreshing(false)
@@ -295,6 +302,31 @@ export default function SessionComposer(
     }
   }
 
+  const sendToZalo = async (): Promise<void> => {
+    if (contentLoadingRef.current || operationRef.current || !beginOperation('zalo')) return
+    try {
+      const result = await window.api.zaloSendSession({
+        classId: cls.id,
+        sessionId: session.id,
+      })
+      const reconciled = reconcileContentWithRoster(cls, result.content)
+      setContent(reconciled)
+      if (config) {
+        setPreview(buildZaloMessage(cls, session, reconciled, config.zaloMessageTemplate))
+      }
+      setZaloStatus({
+        message: result.message,
+        success: result.status === 'sent' || result.status === 'already-sent',
+      })
+      setError(null)
+    } catch (err) {
+      setZaloStatus(null)
+      setError((err as Error).message)
+    } finally {
+      endOperation('zalo')
+    }
+  }
+
   const save = async (): Promise<void> => {
     if (!beginOperation('save')) return
     try {
@@ -310,7 +342,8 @@ export default function SessionComposer(
     }
   }
 
-  const operationBusy = saving || lmsPosting || rewritingAll || extractingPdf || previewRefreshing
+  const operationBusy =
+    saving || lmsPosting || zaloPosting || rewritingAll || extractingPdf || previewRefreshing
   const contentLocked = contentLoading || operationBusy
   const previewLocked = contentLocked || configLoading || !config
   const technicalSkipped = lmsResult
@@ -330,6 +363,14 @@ export default function SessionComposer(
       </div>
       {configError && <p className="alert alert-error" role="alert">{configError}</p>}
       {error && <p className="alert alert-error" role="alert">{error}</p>}
+      {zaloStatus && (
+        <p
+          className={`alert ${zaloStatus.success ? 'alert-success' : 'alert-info'}`}
+          role="status"
+        >
+          {zaloStatus.message}
+        </p>
+      )}
 
       <section className="section">
         <h3>Nội dung bài học</h3>
@@ -453,13 +494,22 @@ export default function SessionComposer(
         <section className="section">
           <div className="row-between" style={{ marginBottom: 10 }}>
             <h3 style={{ margin: 0 }}>Xem trước tin nhắn Zalo</h3>
-            <button
-              className="btn btn-sm"
-              onClick={() => void copyPreview()}
-              disabled={contentLocked}
-            >
-              Copy tin nhắn
-            </button>
+            <div className="btn-row">
+              <button
+                className="btn btn-sm"
+                onClick={() => void copyPreview()}
+                disabled={contentLocked}
+              >
+                Copy tin nhắn
+              </button>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => void sendToZalo()}
+                disabled={contentLocked}
+              >
+                {zaloPosting ? 'Đang gửi LMS & Zalo...' : 'Gửi LMS & Zalo'}
+              </button>
+            </div>
           </div>
           <pre
             aria-label="Xem trước Zalo"

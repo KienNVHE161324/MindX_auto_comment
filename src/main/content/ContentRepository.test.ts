@@ -37,6 +37,7 @@ describe('ContentRepository', () => {
     await repo.save({
       ...makeContent('s1'),
       absentStudentIds: ['s2'],
+      lmsPostedStudentIds: ['s1'],
       postedToLms: true,
       zaloSentAt: '2026-07-23T10:00:00.000Z',
     })
@@ -50,6 +51,7 @@ describe('ContentRepository', () => {
     expect(await repo.get('s1')).toEqual(expect.objectContaining({
       lessonContent: 'Giáo viên vừa sửa',
       absentStudentIds: ['s2', 's1'],
+      lmsPostedStudentIds: ['s1'],
       postedToLms: true,
       zaloSentAt: '2026-07-23T10:00:00.000Z',
     }))
@@ -62,6 +64,7 @@ describe('ContentRepository', () => {
     await Promise.all([
       repo.updateMetadata('s1', {
         absentStudentIds: ['s2'],
+        lmsPostedStudentIds: ['s1'],
         postedToLms: true,
       }),
       repo.save({ ...base, homework: 'Bài giáo viên vừa nhập' }),
@@ -70,6 +73,7 @@ describe('ContentRepository', () => {
     expect(await repo.get('s1')).toEqual(expect.objectContaining({
       homework: 'Bài giáo viên vừa nhập',
       absentStudentIds: ['s2'],
+      lmsPostedStudentIds: ['s1'],
       postedToLms: true,
     }))
   })

@@ -186,11 +186,11 @@ function checkCdpAvailable(): Promise<boolean> {
 export class LmsAutomator {
   private context: BrowserContext | null = null
   private cdpBrowser: Browser | null = null
-  private readonly workflowMutex = new WorkflowMutex()
 
   constructor(
     private readonly sessionDir: string,
     private readonly baseUrl: string = BASE_URL,
+    private readonly workflowMutex = new WorkflowMutex(),
   ) {
     this.debugDir = sessionDir  // lưu debug HTML cùng thư mục session
   }

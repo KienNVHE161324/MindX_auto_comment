@@ -67,10 +67,27 @@ export interface SessionContent {
   homework: string
   comments: StudentComment[]
   absentStudentIds?: string[]
+  /** Học sinh đã được LMS xác nhận lưu nhận xét thành công. */
+  lmsPostedStudentIds?: string[]
   /** true khi đã gửi lên LMS thành công (có HS được nhận xét, không lỗi) */
   postedToLms?: boolean
   /** ISO timestamp khi tin Zalo đã được gửi tự động (ghi file/gửi thật) */
   zaloSentAt?: string
+}
+
+export type ZaloSendResult =
+  | { status: 'sent' }
+  | { status: 'login-required'; message: string }
+
+export interface ZaloSendSessionRequest {
+  classId: string
+  sessionId: string
+}
+
+export interface ZaloSendSessionResult {
+  status: 'sent' | 'already-sent' | 'login-required' | 'blocked'
+  message: string
+  content: SessionContent
 }
 
 export type AutoSendChannel = 'lms' | 'zalo'
@@ -196,6 +213,7 @@ export const IPC = {
   lmsPostSession: 'lms:postSession',
   lmsPostSessionAndSave: 'lms:postSessionAndSave',
   lmsSyncAll: 'lms:syncAll',
+  zaloSendSession: 'zalo:sendSession',
   autoSendGetCatchUp: 'autoSend:getCatchUp',
   autoSendRunCatchUp: 'autoSend:runCatchUp',
 } as const
@@ -221,6 +239,7 @@ export interface AppApi {
     request: LmsPostSessionAndSaveRequest,
   ): Promise<LmsPostSessionAndSaveResult>
   lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
+  zaloSendSession(request: ZaloSendSessionRequest): Promise<ZaloSendSessionResult>
   getAutoSendCatchUp(): Promise<AutoSendCatchUpItem[]>
   runAutoSendCatchUp(): Promise<AutoSendCatchUpResult[]>
 }

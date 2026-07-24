@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_CONFIG, DEFAULT_ZALO_TEMPLATE, IPC } from './types'
+import {
+  DEFAULT_CONFIG,
+  DEFAULT_ZALO_TEMPLATE,
+  IPC,
+  SessionContent,
+  ZaloSendSessionResult,
+} from './types'
 
 describe('DEFAULT_CONFIG', () => {
   it('mặc định backend là local, không có key/thư mục', () => {
@@ -22,5 +28,29 @@ describe('DEFAULT_CONFIG', () => {
 describe('IPC lms sync', () => {
   it('dùng key lms:syncAll (thay cho lms:syncClasses cũ)', () => {
     expect(IPC.lmsSyncAll).toBe('lms:syncAll')
+  })
+})
+
+describe('Zalo send contracts', () => {
+  it('supports sent, already-sent and login-required results', () => {
+    const content: SessionContent = {
+      id: 's1',
+      classId: 'c1',
+      sessionId: 's1',
+      lessonContent: '',
+      homework: '',
+      comments: [],
+    }
+    const results: ZaloSendSessionResult[] = [
+      { status: 'sent', message: 'Đã gửi Zalo.', content },
+      { status: 'already-sent', message: 'Buổi này đã gửi Zalo.', content },
+      { status: 'login-required', message: 'Cần đăng nhập Zalo Web.', content },
+    ]
+
+    expect(results.map(result => result.status)).toEqual([
+      'sent',
+      'already-sent',
+      'login-required',
+    ])
   })
 })
