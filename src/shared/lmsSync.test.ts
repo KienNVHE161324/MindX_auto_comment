@@ -178,7 +178,7 @@ describe('mergeContentResult', () => {
     })
   })
 
-  it('có existing nội dung app -> giữ bài học + nhận xét, chỉ cập nhật điểm danh', () => {
+  it('ghi đè bài học + nhận xét bằng dữ liệu LMS mới, cập nhật điểm danh', () => {
     const result: LmsContentResult = {
       classCode: 'A1', sessionDate: '2026-07-10',
       lessonContent: 'Bài từ LMS', homework: 'BT LMS',
@@ -193,11 +193,27 @@ describe('mergeContentResult', () => {
       comments: [{ studentId: 's1', raw: 'Nháp app', polished: '' }],
     }
     const content = mergeContentResult(cls, session, result, existing)
-    expect(content.lessonContent).toBe('Bài do người dùng soạn')
-    expect(content.homework).toBe('BT app')
-    expect(content.comments).toEqual([{ studentId: 's1', raw: 'Nháp app', polished: '' }])
+    expect(content.lessonContent).toBe('Bài từ LMS')
+    expect(content.homework).toBe('BT LMS')
+    expect(content.comments).toEqual([{ studentId: 's1', raw: 'Nhận xét LMS', polished: 'Nhận xét LMS' }])
     expect(content.attendedStudentIds).toEqual(['s1'])
     expect(content.absentStudentIds).toEqual(['s2'])
+  })
+
+  it('LMS chưa có nhận xét cho HS -> giữ nhận xét app cũ, vẫn ghi điểm danh', () => {
+    const result: LmsContentResult = {
+      classCode: 'A1', sessionDate: '2026-07-10',
+      lessonContent: 'Bài từ LMS', homework: '',
+      students: [{ name: 'An', attended: true, comment: '' }],
+    }
+    const existing = {
+      id: 'ss1', classId: 'c1', sessionId: 'ss1',
+      lessonContent: 'x', homework: '',
+      comments: [{ studentId: 's1', raw: 'Nháp app', polished: 'Đã sửa' }],
+    }
+    const content = mergeContentResult(cls, session, result, existing)
+    expect(content.comments).toEqual([{ studentId: 's1', raw: 'Nháp app', polished: 'Đã sửa' }])
+    expect(content.attendedStudentIds).toEqual(['s1'])
   })
 
   it('HS nghỉ -> vào absentStudentIds, không có StudentComment', () => {

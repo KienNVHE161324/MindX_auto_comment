@@ -102,9 +102,10 @@ export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): 
 
 /**
  * Gộp kết quả LMS vào nội dung buổi.
- * - Không có `existing` (buổi chưa có trong app): lấy toàn bộ từ LMS.
- * - Có `existing` với nội dung đã soạn: GIỮ nội dung bài học + nhận xét của app,
- *   chỉ cập nhật điểm danh (`attendedStudentIds`/`absentStudentIds`) từ LMS.
+ * Đồng bộ GHI ĐÈ nội dung (bài học, bài về nhà, nhận xét) bằng dữ liệu mới nhất trên LMS,
+ * kể cả khi buổi đã có nội dung trong app. Riêng nhận xét: chỉ ghi đè bằng nhận xét LMS
+ * KHÔNG rỗng — nếu LMS chưa có nhận xét cho một HS thì giữ nhận xét app đang có (nếu có).
+ * Cờ trạng thái (đã gửi Zalo/LMS) được giữ lại để không mất lịch sử gửi.
  */
 export function mergeContentResult(
   cls: SchoolClass,
@@ -112,32 +113,44 @@ export function mergeContentResult(
   result: LmsContentResult,
   existing?: SessionContent,
 ): SessionContent {
-  const lmsComments: SessionContent['comments'] = []
   const absentStudentIds: string[] = []
   const attendedStudentIds: string[] = []
+  const commentByStudent = new Map<string, { raw: string; polished: string }>()
 
   for (const s of result.students) {
     const student = matchStudentByName(cls.students, s.name)
     if (!student) continue
     if (s.attended) {
       attendedStudentIds.push(student.id)
-      lmsComments.push({ studentId: student.id, raw: s.comment, polished: s.comment })
+      const lmsComment = s.comment.trim()
+      if (lmsComment) {
+        commentByStudent.set(student.id, { raw: s.comment, polished: s.comment })
+      }
     } else {
       absentStudentIds.push(student.id)
     }
   }
 
-  const hasAppContent = Boolean(
-    existing && (existing.lessonContent.trim() !== '' || existing.comments.length > 0),
-  )
+  // Ghép nhận xét: ưu tiên nhận xét LMS; HS nào LMS chưa có thì giữ nhận xét app cũ.
+  const existingComment = (id: string): { raw: string; polished: string } | undefined =>
+    existing?.comments.find(c => c.studentId === id)
+  const comments: SessionContent['comments'] = cls.students
+    .map(student => {
+      const lms = commentByStudent.get(student.id)
+      const old = existingComment(student.id)
+      const chosen = lms ?? old
+      if (!chosen) return null
+      return { studentId: student.id, raw: chosen.raw, polished: chosen.polished }
+    })
+    .filter((c): c is SessionContent['comments'][number] => c !== null)
 
   return {
     id: session.id,
     classId: cls.id,
     sessionId: session.id,
-    lessonContent: hasAppContent ? existing!.lessonContent : result.lessonContent,
-    homework: hasAppContent ? existing!.homework : result.homework,
-    comments: hasAppContent ? existing!.comments : lmsComments,
+    lessonContent: result.lessonContent,
+    homework: result.homework,
+    comments,
     absentStudentIds,
     attendedStudentIds,
     ...(existing?.lmsPostedStudentIds ? { lmsPostedStudentIds: existing.lmsPostedStudentIds } : {}),
