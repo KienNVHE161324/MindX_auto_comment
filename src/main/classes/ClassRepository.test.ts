@@ -29,7 +29,7 @@ describe('ClassRepository', () => {
     await repo.save(c)
     expect(await repo.get('c1')).toEqual({
       ...c,
-      autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false },
+      autoSend: { time: '18:00', lmsEnabled: false, zaloEnabled: false, dayOffset: 'same' },
     })
   })
   it('get trả null khi không có', async () => {
@@ -62,6 +62,7 @@ describe('ClassRepository', () => {
       time: '19:15',
       lmsEnabled: true,
       zaloEnabled: true,
+      dayOffset: 'same',
     })
   })
 
@@ -71,6 +72,7 @@ describe('ClassRepository', () => {
       time: '18:00',
       lmsEnabled: false,
       zaloEnabled: false,
+      dayOffset: 'same',
     })
   })
 })

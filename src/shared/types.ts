@@ -34,10 +34,14 @@ export interface ClassSession {
   label?: string
 }
 
+/** Gửi vào cùng ngày buổi học ('same') hay ngày hôm sau buổi học ('next'). */
+export type AutoSendDayOffset = 'same' | 'next'
+
 export interface AutoSendConfig {
   time: string
   lmsEnabled: boolean
   zaloEnabled: boolean
+  dayOffset?: AutoSendDayOffset
 }
 
 /** Dạng dữ liệu đã lưu trước khi tách công tắc LMS/Zalo. */

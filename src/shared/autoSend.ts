@@ -1,5 +1,6 @@
 import {
   AutoSendConfig,
+  AutoSendDayOffset,
   LegacyAutoSendConfig,
   SchoolClass,
   ClassSession,
@@ -21,25 +22,32 @@ export function normalizeAutoSend(
   value?: AutoSendConfig | LegacyAutoSendConfig,
 ): AutoSendConfig {
   if (!value) {
-    return { time: '18:00', lmsEnabled: false, zaloEnabled: false }
+    return { time: '18:00', lmsEnabled: false, zaloEnabled: false, dayOffset: 'same' }
   }
   if ('enabled' in value) {
     return {
       time: value.time,
       lmsEnabled: value.enabled,
       zaloEnabled: value.enabled,
+      dayOffset: 'same',
     }
   }
-  return value
+  return { dayOffset: 'same', ...value }
 }
 
-/** Thời điểm hẹn theo ngày địa phương của chính buổi học. */
-export function scheduledAt(session: ClassSession, time: string): Date | null {
+/** Thời điểm hẹn: cùng ngày buổi học ('same') hoặc ngày hôm sau ('next'), theo giờ địa phương. */
+export function scheduledAt(
+  session: ClassSession,
+  time: string,
+  dayOffset: AutoSendDayOffset = 'same',
+): Date | null {
   const match = time.match(/^([01]\d|2[0-3]):([0-5]\d)$/)
   const date = session.dateTime.slice(0, 10)
   if (!match || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
   const result = new Date(`${date}T${match[1]}:${match[2]}:00`)
-  return Number.isNaN(result.getTime()) ? null : result
+  if (Number.isNaN(result.getTime())) return null
+  if (dayOffset === 'next') result.setDate(result.getDate() + 1)
+  return result
 }
 
 export interface AutoSendPlan {
@@ -62,7 +70,7 @@ export function planAutoSend(cls: SchoolClass, content: SessionContent | null, n
   const session = nearestPastSession(cls.sessions, now)
   if (!session) return null
   if (!content) return null
-  const due = scheduledAt(session, config.time)
+  const due = scheduledAt(session, config.time, config.dayOffset)
   if (!due || now < due) return null
 
   // Buổi #4/#9 có cơ chế đặc biệt → chặn gửi LMS (phase sau mới xử lý)

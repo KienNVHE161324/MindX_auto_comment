@@ -30,6 +30,7 @@ describe('normalizeAutoSend', () => {
       time: '18:30',
       lmsEnabled: true,
       zaloEnabled: true,
+      dayOffset: 'same',
     })
   })
 
@@ -38,6 +39,7 @@ describe('normalizeAutoSend', () => {
       time: '18:30',
       lmsEnabled: false,
       zaloEnabled: false,
+      dayOffset: 'same',
     })
   })
 
@@ -46,7 +48,13 @@ describe('normalizeAutoSend', () => {
       time: '18:00',
       lmsEnabled: false,
       zaloEnabled: false,
+      dayOffset: 'same',
     })
+  })
+
+  it('giữ dayOffset đã lưu, mặc định "same" nếu thiếu', () => {
+    expect(normalizeAutoSend({ time: '18:00', lmsEnabled: true, zaloEnabled: false }).dayOffset).toBe('same')
+    expect(normalizeAutoSend({ time: '18:00', lmsEnabled: true, zaloEnabled: false, dayOffset: 'next' }).dayOffset).toBe('next')
   })
 })
 
@@ -56,6 +64,11 @@ describe('scheduledAt', () => {
   it('dùng ngày của buổi học thay vì ngày hiện tại', () => {
     expect(scheduledAt(session, '18:30')?.toISOString())
       .toBe(new Date('2026-07-20T18:30:00').toISOString())
+  })
+
+  it('dayOffset "next" -> hẹn sang ngày hôm sau buổi học', () => {
+    expect(scheduledAt(session, '18:30', 'next')?.toISOString())
+      .toBe(new Date('2026-07-21T18:30:00').toISOString())
   })
 
   it('giờ sai định dạng -> null', () => {

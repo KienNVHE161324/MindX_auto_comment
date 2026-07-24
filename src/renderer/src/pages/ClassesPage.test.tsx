@@ -206,7 +206,7 @@ describe('ClassesPage', () => {
 
     await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith({
       ...configured,
-      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false, dayOffset: 'same' },
     }))
     expect(screen.getByLabelText('Tự động LMS A1')).toBeChecked()
     expect(screen.getByLabelText('Tự động Zalo A1')).not.toBeChecked()
@@ -231,7 +231,30 @@ describe('ClassesPage', () => {
 
     await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith({
       ...configured,
-      autoSend: { time: '19:30', lmsEnabled: true, zaloEnabled: false },
+      autoSend: { time: '19:30', lmsEnabled: true, zaloEnabled: false, dayOffset: 'same' },
+    }))
+  })
+
+  it('đổi ngày gửi tự động (cùng ngày / hôm sau) và tự lưu', async () => {
+    const configured: SchoolClass = {
+      ...c1,
+      sessions: [
+        { id: 'past', dateTime: '2020-01-01T18:00:00' },
+        { id: 'future', dateTime: '2099-01-01T18:00:00' },
+      ],
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false },
+    }
+    const api = stub({ listClasses: vi.fn(async () => [configured]) })
+    render(<ClassesPage />)
+    await enableNotStartedClasses()
+
+    fireEvent.change(await screen.findByLabelText('Ngày gửi tự động A1'), {
+      target: { value: 'next' },
+    })
+
+    await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith({
+      ...configured,
+      autoSend: { time: '18:00', lmsEnabled: true, zaloEnabled: false, dayOffset: 'next' },
     }))
   })
 

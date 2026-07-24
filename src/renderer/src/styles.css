@@ -357,6 +357,12 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
   border-radius: 999px;
   text-align: center;
 }
+.auto-send-day {
+  height: 28px;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+}
 
 .catch-up-card {
   margin-bottom: 16px;
