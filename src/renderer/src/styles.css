@@ -357,13 +357,14 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 
 .auto-send-time {
-  width: 84px;
+  width: 110px;
   height: 28px;
   padding: 2px 8px;
   font-size: 12px;
   border-radius: 999px;
   text-align: center;
 }
+input.auto-send-time { width: 110px; }
 select.auto-send-day {
   width: 112px;
   min-width: 112px;

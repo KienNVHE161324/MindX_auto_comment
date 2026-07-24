@@ -706,10 +706,21 @@ export class LmsAutomator {
         const mode = getStudentCommentModeFromAriaLabel(
           await modeToggle.getAttribute('aria-label').catch(() => null),
         )
-        console.log(`[LMS] ${studentName}: giữ nguyên comment mode ${mode}`)
+        console.log(`[LMS] ${studentName}: comment mode = ${mode}`)
 
-        // Area và Manual đều dùng Quill. Nếu popup đang ở trạng thái hiển thị,
-        // click vùng nhận xét để mở editor của chính mode hiện tại; không đổi switch.
+        // Ở "by-areas mode" KHÔNG có editor tự do (.ql-editor) — phải bấm toggle chuyển sang
+        // manual mode thì editor Quill mới hiện. HS mở sẵn manual mode thì bỏ qua bước này.
+        if (mode === 'area') {
+          const switchToManual = activePopup.locator(getStudentCommentManualModeSelector()).first()
+          if ((await switchToManual.count()) > 0) {
+            const input = switchToManual.locator('input.MuiSwitch-input').first()
+            const target = (await input.count()) > 0 ? input : switchToManual
+            await target.click({ timeout: 5000 }).catch(() => {})
+            await page.waitForTimeout(500)
+            console.log(`[LMS] ${studentName}: đã chuyển sang manual mode`)
+          }
+        }
+
         const editorRendered = await editor
           .waitFor({ state: 'visible', timeout: getStudentCommentInitialEditorWaitMs(isFirstCommentOpen) })
           .then(() => true)
@@ -1133,15 +1144,20 @@ export class LmsAutomator {
    * Bỏ qua placeholder rỗng.
    */
   private async readCommentFromPopup(popup: Locator): Promise<string> {
+    // Nhận xét đã lưu nằm trong ô của bảng nội dung. `full-width can-have-border` là class
+    // ngữ nghĩa ổn định (không phải jss đổi theo build). Fallback thêm .ql-editor / td p.
     const candidates = [
+      popup.locator('table.can-have-border td').first(),
+      popup.locator('table.full-width td').first(),
       popup.locator('.ql-editor').first(),
       popup.locator('table td p').first(),
-      popup.locator('[class*="place-holder"], .ql-editor, table td p').first(),
     ]
     for (const el of candidates) {
       if ((await el.count()) === 0) continue
       const isPlaceholder = await el
-        .evaluate(node => (node as HTMLElement).className.includes('place-holder'))
+        .locator('.place-holder')
+        .count()
+        .then(c => c > 0)
         .catch(() => false)
       if (isPlaceholder) return ''
       const text = ((await el.innerText().catch(() => '')) ?? '').trim()
