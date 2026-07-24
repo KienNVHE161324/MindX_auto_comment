@@ -134,10 +134,11 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 /* Nút biểu tượng có khung (Sửa/Xóa) — chứa SVG đơn sắc */
 .btn-icon-box {
   padding: 0;
-  width: 32px; height: 32px;
+  width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--text-muted);
 }
+.btn-icon-box svg { width: 15px; height: 15px; }
 .btn-icon-box:hover { color: var(--text); }
 .btn-icon-box.danger:hover { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
@@ -314,8 +315,8 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .auto-send-controls {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 2px 3px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -323,14 +324,18 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 
 .auto-send-controls .check.compact {
   margin: 0;
-  gap: 6px;
+  gap: 4px;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 5px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
   color: var(--text-muted);
   transition: background .12s, color .12s;
+}
+.auto-send-controls .check.compact input {
+  width: 13px;
+  height: 13px;
 }
 .auto-send-controls .check.compact:has(input:checked) {
   background: var(--primary-soft);
@@ -338,7 +343,10 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 
 .auto-send-time {
-  width: 104px;
+  width: 84px;
+  height: 28px;
+  padding: 2px 8px;
+  font-size: 12px;
   border-radius: 999px;
   text-align: center;
 }
@@ -397,7 +405,7 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 }
 
 .class-filter-group > strong {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--text-faint);
@@ -409,9 +417,9 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
   margin: 0;
   gap: 0;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 6px 14px;
+  padding: 4px 11px;
   border-radius: 999px;
   border: 1px solid var(--border);
   color: var(--text-muted);
