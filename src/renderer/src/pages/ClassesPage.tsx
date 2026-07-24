@@ -398,7 +398,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
             ))}
           </select>
         </div>
-        <div className="class-filter-group">
+        <div className="class-filter-group programs">
           <strong>Loại lớp</strong>
           {ALL_CLASS_PROGRAMS.map(program => (
             <label className="check compact" key={program}>
@@ -461,6 +461,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
               </div>
               <div className="btn-row">
                 <div className="auto-send-controls" aria-label={`Lịch tự động ${c.code}`}>
+                  <span className="auto-send-caption">Tự động gửi lúc</span>
                   <input
                     type="time"
                     className="input input-auto auto-send-time"

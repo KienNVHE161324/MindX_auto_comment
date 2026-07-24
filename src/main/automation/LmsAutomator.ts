@@ -680,7 +680,19 @@ export class LmsAutomator {
           .locator('button')
           .filter({ hasText: getStudentCommentButtonPattern() })
           .first()
-        await openComment.scrollIntoViewIfNeeded()
+        // Bound 10s + dump DOM hàng nếu không thấy nút — tránh treo 30s và lấy được DOM thật
+        // để chẩn đoán khi 1 HS (thường HS đầu) không mở được popup.
+        const openReady = await openComment
+          .waitFor({ state: 'visible', timeout: 10_000 })
+          .then(() => true)
+          .catch(() => false)
+        if (!openReady) {
+          const rowHtml = await row.evaluate(el => el.outerHTML).catch(() => '(không đọc được hàng)')
+          const debugPath = path.join(this.debugDir, 'lms-student-open-debug.html')
+          fs.writeFileSync(debugPath, rowHtml, 'utf8')
+          throw new Error(`Không thấy nút "Nhận xét học sinh" cho ${studentName} trong 10s. HTML hàng: ${debugPath}`)
+        }
+        await openComment.scrollIntoViewIfNeeded({ timeout: 8000 }).catch(() => {})
         await openComment.evaluate(element => (element as HTMLElement).click())
 
         const activePopup = page.locator('[role="dialog"]').last()
