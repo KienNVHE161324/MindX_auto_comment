@@ -173,7 +173,7 @@ export default function SessionComposer(
   const aiRewriteAll = async (): Promise<void> => {
     if (!beginOperation('ai')) return
     try {
-      const targets = cls.students.filter(s => !isAbsent(s.id) && commentFor(s.id).raw.trim() !== '')
+      const targets = cls.students.filter(s => !s.droppedOut && !isAbsent(s.id) && commentFor(s.id).raw.trim() !== '')
       if (targets.length === 0) return
       const polishedList = await window.api.rewriteCommentsBatch(
         targets.map(s => ({ name: s.name, raw: commentFor(s.id).raw })),
@@ -219,7 +219,7 @@ export default function SessionComposer(
 
       const sessionDate = session.dateTime.slice(0, 10) // 'YYYY-MM-DD'
       const comments = cls.students
-        .filter(s => !isAbsent(s.id))
+        .filter(s => !s.droppedOut && !isAbsent(s.id))
         .map(s => {
           const cm = commentFor(s.id)
           return { studentName: s.name, text: cm.polished || cm.raw }
@@ -404,7 +404,7 @@ export default function SessionComposer(
         </div>
         {cls.students.length === 0 && <p className="text-muted">Lớp chưa có học sinh.</p>}
         <div className="stack" style={{ gap: 10 }}>
-          {cls.students.map(s => {
+          {cls.students.filter(s => !s.droppedOut).map(s => {
             const cm = commentFor(s.id)
             const absent = isAbsent(s.id)
             return (
@@ -507,7 +507,7 @@ export default function SessionComposer(
                 onClick={() => void sendToZalo()}
                 disabled={contentLocked}
               >
-                {zaloPosting ? 'Đang gửi LMS & Zalo...' : 'Gửi LMS & Zalo'}
+                {zaloPosting ? 'Đang gửi Zalo...' : 'Gửi Zalo'}
               </button>
             </div>
           </div>

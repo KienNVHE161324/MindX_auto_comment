@@ -18,7 +18,7 @@ import {
   DEFAULT_CLASS_FILTERS,
   filterClasses,
 } from '../../../shared/classFilters'
-import { computeContentTargets, mergeContentResult } from '../../../shared/lmsSync'
+import { computeContentTargets, mergeContentResult, detectDroppedOut } from '../../../shared/lmsSync'
 import { getSessionContentStatus, findPreviousSession, copySessionContent, getClassProgress, SessionContentStatus } from '../../../shared/sessionContent'
 import ClassEditor from './ClassEditor'
 import SessionComposer from './SessionComposer'
@@ -133,7 +133,22 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
         const target = contentTargets.find(t => t.classCode === result.classCode)
         const session = cls?.sessions.find(s => s.id === target?.sessionId)
         if (cls && session) {
-          await window.api.saveContent(mergeContentResult(cls, session, result))
+          // Giữ nội dung app đã soạn (nếu có), chỉ cập nhật điểm danh từ LMS.
+          const existing = sessionContents.get(session.id)
+          await window.api.saveContent(mergeContentResult(cls, session, result, existing))
+
+          // Cập nhật nghỉ dài hạn: HS không còn trên bảng nhận xét LMS → droppedOut.
+          const flags = detectDroppedOut(cls.students, result.students.map(s => s.name))
+          const flagById = new Map(flags.map(f => [f.id, f.droppedOut]))
+          const changed = cls.students.some(
+            s => Boolean(s.droppedOut) !== Boolean(flagById.get(s.id)),
+          )
+          if (changed) {
+            await window.api.saveClass({
+              ...cls,
+              students: cls.students.map(s => ({ ...s, droppedOut: flagById.get(s.id) ?? false })),
+            })
+          }
         }
       }
 

@@ -648,7 +648,7 @@ describe('SessionComposer — Zalo Web', () => {
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Gửi LMS & Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
 
     await waitFor(() => expect(api.zaloSendSession).toHaveBeenCalledWith({
       classId: 'c1',
@@ -666,9 +666,9 @@ describe('SessionComposer — Zalo Web', () => {
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Gửi LMS & Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
 
-    expect(screen.getByRole('button', { name: 'Đang gửi LMS & Zalo...' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Đang gửi Zalo...' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Lưu' })).toBeDisabled()
   })
 
@@ -686,7 +686,7 @@ describe('SessionComposer — Zalo Web', () => {
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Xem trước Zalo' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Gửi LMS & Zalo' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Gửi Zalo' }))
 
     expect(await screen.findByText(/Cần đăng nhập Zalo Web/i)).toBeInTheDocument()
     expect(screen.queryByText('Đã gửi Zalo.')).not.toBeInTheDocument()

@@ -23,6 +23,8 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
     setDraft(prev => ({ ...prev, students: [...prev.students, { id: newId(), name: '' }] }))
   const setStudent = (id: string, name: string): void =>
     setDraft(prev => ({ ...prev, students: prev.students.map(s => (s.id === id ? { ...s, name } : s)) }))
+  const toggleDroppedOut = (id: string, droppedOut: boolean): void =>
+    setDraft(prev => ({ ...prev, students: prev.students.map(s => (s.id === id ? { ...s, droppedOut } : s)) }))
   const removeStudent = (id: string): void =>
     setDraft(prev => ({ ...prev, students: prev.students.filter(s => s.id !== id) }))
 
@@ -79,6 +81,15 @@ export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone:
                 value={s.name}
                 onChange={e => setStudent(s.id, e.target.value)}
               />
+              <label className="check compact" title="Loại HS khỏi Zalo và LMS ở mọi buổi">
+                <input
+                  type="checkbox"
+                  aria-label={`Đã nghỉ học ${s.name}`}
+                  checked={s.droppedOut ?? false}
+                  onChange={e => toggleDroppedOut(s.id, e.target.checked)}
+                />
+                Đã nghỉ học
+              </label>
               <button className="btn btn-icon" aria-label={`Xóa học sinh ${s.name}`} onClick={() => removeStudent(s.id)}>✕</button>
             </div>
           ))}

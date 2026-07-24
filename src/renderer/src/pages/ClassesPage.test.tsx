@@ -329,6 +329,7 @@ describe('ClassesPage', () => {
       lessonContent: 'Bài học', homework: 'BT',
       comments: [{ studentId: 's1', raw: 'Ngoan', polished: 'Ngoan' }],
       absentStudentIds: [],
+      attendedStudentIds: ['s1'],
     }))
     await waitFor(() => expect(screen.getByText(/đã cập nhật nội dung 1 buổi/i)).toBeInTheDocument())
   })

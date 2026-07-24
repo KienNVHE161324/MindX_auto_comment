@@ -312,20 +312,35 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .divider { height: 1px; background: var(--border); border: none; margin: 14px 0; }
 .auto-send-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 
 .auto-send-controls .check.compact {
   margin: 0;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  transition: background .12s, color .12s;
+}
+.auto-send-controls .check.compact:has(input:checked) {
+  background: var(--primary-soft);
+  color: var(--primary-hover);
 }
 
 .auto-send-time {
-  width: 112px;
+  width: 104px;
+  border-radius: 999px;
+  text-align: center;
 }
 
 .catch-up-card {
@@ -369,7 +384,7 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .class-filter-bar {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 12px 24px;
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
@@ -381,14 +396,48 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
   flex-wrap: wrap;
 }
 
+.class-filter-group > strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+/* Ẩn ô tick mặc định, biến label thành pill toggle */
 .class-filter-group .check.compact {
   margin: 0;
-  gap: 4px;
+  gap: 0;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.class-filter-group .check.compact input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.class-filter-group .check.compact:hover {
+  border-color: var(--primary);
+  color: var(--primary-hover);
+}
+.class-filter-group .check.compact:has(input:checked) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
 }
 
 .class-filter-count {
   margin-left: auto;
-  color: #667085;
+  color: var(--text-faint);
   font-size: 13px;
+  font-weight: 550;
 }
