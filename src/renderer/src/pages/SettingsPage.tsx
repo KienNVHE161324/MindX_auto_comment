@@ -146,7 +146,7 @@ export default function SettingsPage(): JSX.Element {
             rows={2}
           />
         </div>
-        <label className="check" style={{ marginTop: 12 }}>
+        <label className="check" style={{ marginTop: 12, fontSize: 13, fontWeight: 450, color: 'var(--text-muted)' }}>
           <input
             type="checkbox"
             checked={config.includeLessonInRewrite ?? false}
@@ -154,7 +154,7 @@ export default function SettingsPage(): JSX.Element {
           />
           Khi sửa nhận xét bằng AI, lồng nội dung bài học vào ngữ cảnh (nhận xét sát bài hơn)
         </label>
-        <p className="field-hint" style={{ marginTop: 4 }}>Nhớ bấm "Lưu" sau khi đổi.</p>
+        <p className="field-hint" style={{ marginTop: 4, fontSize: 12 }}>Nhớ bấm "Lưu" sau khi đổi.</p>
       </section>
 
       <section className="section">
