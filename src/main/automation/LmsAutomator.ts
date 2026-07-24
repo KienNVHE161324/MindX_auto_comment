@@ -77,10 +77,10 @@ export function getStudentCommentModeFromAriaLabel(
   return 'unknown'
 }
 
-export function getStudentCommentInitialEditorWaitMs(): number {
-  // Popup HS ĐẦU TIÊN render "nguội" nên editor có thể mất >8s; cho rộng thời gian
-  // để không phải rơi vào fallback click vùng comment (dễ treo nếu DOM khác kỳ vọng).
-  return 15000
+export function getStudentCommentInitialEditorWaitMs(isFirst = false): number {
+  // Popup HS ĐẦU TIÊN render "nguội" nên editor có thể mất >8s → chờ rộng 15s để không
+  // rơi vào fallback. Các HS sau render "nóng", giữ 8s cho nhanh.
+  return isFirst ? 15000 : 8000
 }
 
 export async function isStudentCommentSaveConfirmed(
@@ -639,6 +639,7 @@ export class LmsAutomator {
     const absentStudentNames: string[] = []
     const attendedStudentNames: string[] = []
     const seenStudents = new Set<string>()
+    let isFirstCommentOpen = true  // HS đầu tiên mở popup cần chờ editor lâu hơn
 
     // Bảng HS trong tab "Nhận xét" (scope tránh nhầm table danh sách lớp bên ngoài)
     const rows = page.locator('div.comment-list-table table tbody tr')
@@ -698,9 +699,10 @@ export class LmsAutomator {
         // Area và Manual đều dùng Quill. Nếu popup đang ở trạng thái hiển thị,
         // click vùng nhận xét để mở editor của chính mode hiện tại; không đổi switch.
         const editorRendered = await editor
-          .waitFor({ state: 'visible', timeout: getStudentCommentInitialEditorWaitMs() })
+          .waitFor({ state: 'visible', timeout: getStudentCommentInitialEditorWaitMs(isFirstCommentOpen) })
           .then(() => true)
           .catch(() => false)
+        isFirstCommentOpen = false
         if (!editorRendered) {
           // Fallback: click vùng comment để mở editor. Chờ có phần tử tối đa 5s rồi mới
           // click — tránh locator.evaluate treo 30s (default) khi popup không có 'table td p'.
