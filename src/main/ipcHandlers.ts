@@ -20,7 +20,7 @@ export interface IpcDeps {
   getContentRepository: () => Promise<ContentRepository>
   extractPdf: () => Promise<string>
   rewrite: (studentName: string, raw: string) => Promise<string>
-  rewriteBatch: (items: { name: string; raw: string }[]) => Promise<string[]>
+  rewriteBatch: (items: { name: string; raw: string }[], lessonContent?: string) => Promise<string[]>
   lmsOpenBrowser: () => Promise<{ loggedIn: boolean }>
   lmsPostSession: (params: LmsPostParams) => Promise<LmsPostResult>
   runLmsPostExclusive<T>(
@@ -68,7 +68,7 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
     saveContent: async (content: SessionContent) => (await deps.getContentRepository()).save(content),
     extractLessonFromPdf: () => deps.extractPdf(),
     rewriteComment: (studentName: string, raw: string) => deps.rewrite(studentName, raw),
-    rewriteCommentsBatch: (items) => deps.rewriteBatch(items),
+    rewriteCommentsBatch: (items, lessonContent) => deps.rewriteBatch(items, lessonContent),
     lmsOpenBrowser: () => deps.lmsOpenBrowser(),
     lmsPostSession: (params: LmsPostParams) => deps.lmsPostSession(params),
     lmsPostSessionAndSave: request => deps.runLmsPostExclusive(async postSession => {

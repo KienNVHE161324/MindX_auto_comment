@@ -79,6 +79,7 @@ describe('rewriteCommentsBatch (gộp 1 request)', () => {
       'k',
       [{ name: 'An', raw: 'ngoan' }, { name: 'Bình', raw: 'ok' }],
       'thân thiện',
+      '',
       fetchFn,
     )
     expect(out).toEqual(['Em An tiến bộ.', 'Em Bình tích cực.'])
@@ -87,7 +88,7 @@ describe('rewriteCommentsBatch (gộp 1 request)', () => {
 
   it('bỏ rào ```json và vẫn parse được', async () => {
     const reply = '```json\n[{"i":1,"text":"Em An tốt."}]\n```'
-    const out = await rewriteCommentsBatch('k', [{ name: 'An', raw: 'ngoan' }], 'x', jsonFetch(okReply(reply)))
+    const out = await rewriteCommentsBatch('k', [{ name: 'An', raw: 'ngoan' }], 'x', '', jsonFetch(okReply(reply)))
     expect(out).toEqual(['Em An tốt.'])
   })
 
@@ -97,6 +98,7 @@ describe('rewriteCommentsBatch (gộp 1 request)', () => {
       'k',
       [{ name: 'An', raw: 'ngoan' }, { name: 'Bình', raw: 'nghịch' }],
       'x',
+      '',
       jsonFetch(okReply(reply)),
     )
     expect(out).toEqual(['Em An tốt.', 'nghịch'])
@@ -104,9 +106,19 @@ describe('rewriteCommentsBatch (gộp 1 request)', () => {
 
   it('mảng rỗng -> không gọi mạng', async () => {
     const fetchFn = jsonFetch(okReply('[]'))
-    const out = await rewriteCommentsBatch('k', [], 'x', fetchFn)
+    const out = await rewriteCommentsBatch('k', [], 'x', '', fetchFn)
     expect(out).toEqual([])
     expect((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0)
+  })
+
+  it('lồng nội dung bài học vào prompt khi được truyền', async () => {
+    const fetchFn = jsonFetch(okReply(JSON.stringify([{ i: 1, text: 'Em An tốt.' }])))
+    await rewriteCommentsBatch('k', [{ name: 'An', raw: 'ngoan' }], 'x', 'Bài: phép cộng', fetchFn)
+    const body = JSON.parse(
+      (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string,
+    )
+    const promptText = body.contents[0].parts[0].text as string
+    expect(promptText).toContain('Bài: phép cộng')
   })
 })
 

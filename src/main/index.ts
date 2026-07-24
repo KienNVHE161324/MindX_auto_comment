@@ -109,11 +109,16 @@ function registerIpc(scheduler: AutoSendScheduler): void {
     setGeminiModel(cfg.geminiModel)
     return rewriteComment(cfg.geminiApiKey, studentName, raw, cfg.commentStyleHint)
   }
-  const rewriteBatch = async (items: { name: string; raw: string }[]): Promise<string[]> => {
+  const rewriteBatch = async (
+    items: { name: string; raw: string }[],
+    lessonContent?: string,
+  ): Promise<string[]> => {
     const cfg = await configStore.load()
     if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
     setGeminiModel(cfg.geminiModel)
-    return rewriteCommentsBatch(cfg.geminiApiKey, items, cfg.commentStyleHint)
+    // Chỉ lồng bài học khi người dùng bật tùy chọn trong Cấu hình.
+    const lesson = cfg.includeLessonInRewrite ? (lessonContent ?? '') : ''
+    return rewriteCommentsBatch(cfg.geminiApiKey, items, cfg.commentStyleHint, lesson)
   }
   const handlers = createIpcHandlers({
     configStore,
@@ -149,7 +154,7 @@ function registerIpc(scheduler: AutoSendScheduler): void {
   ipcMain.handle(IPC.saveContent, (_e, content) => handlers.saveContent(content))
   ipcMain.handle(IPC.extractLessonFromPdf, () => handlers.extractLessonFromPdf())
   ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
-  ipcMain.handle(IPC.rewriteCommentsBatch, (_e, items) => handlers.rewriteCommentsBatch(items))
+  ipcMain.handle(IPC.rewriteCommentsBatch, (_e, items, lessonContent) => handlers.rewriteCommentsBatch(items, lessonContent))
   ipcMain.handle(IPC.lmsOpenBrowser, () => handlers.lmsOpenBrowser())
   ipcMain.handle(IPC.lmsPostSession, (_e, params) => handlers.lmsPostSession(params))
   ipcMain.handle(

@@ -177,6 +177,7 @@ export default function SessionComposer(
       if (targets.length === 0) return
       const polishedList = await window.api.rewriteCommentsBatch(
         targets.map(s => ({ name: s.name, raw: commentFor(s.id).raw })),
+        content.lessonContent,
       )
       setContent(prev => ({
         ...prev,

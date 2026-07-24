@@ -312,12 +312,13 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .divider { height: 1px; background: var(--border); border: none; margin: 14px 0; }
-/* Dòng "Tự động gửi" riêng dưới tên lớp */
+/* Dòng "Tự động gửi" riêng dưới tên lớp — giữ tất cả trên MỘT hàng */
 .auto-send-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   margin-top: 10px;
   padding: 8px 12px;
   background: var(--bg);
@@ -364,11 +365,17 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
   text-align: center;
 }
 .auto-send-day {
+  width: 168px;
   height: 28px;
-  padding: 2px 8px;
-  font-size: 12px;
+  padding: 2px 26px 2px 10px;
+  font-size: 11px;
+  line-height: 1.2;
   border-radius: 999px;
+  flex: 0 0 auto;
 }
+.auto-send-time { flex: 0 0 auto; }
+.auto-send-row .check.compact { flex: 0 0 auto; }
+.auto-send-caption { flex: 0 0 auto; }
 
 .catch-up-card {
   margin-bottom: 16px;
@@ -419,9 +426,11 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 
 .class-filter-select {
   font-size: 12px;
-  padding: 4px 10px;
+  line-height: 1.4;
+  padding: 3px 26px 3px 10px;
   border-radius: 8px;
-  height: 30px;
+  height: 32px;
+  width: auto;
 }
 
 .class-filter-group {

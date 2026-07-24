@@ -251,7 +251,7 @@ describe('SessionComposer', () => {
     fireEvent.change(screen.getByLabelText(/^nhận xét An$/i), { target: { value: 'ngoan' } })
     fireEvent.click(screen.getByText(/sửa tất cả bằng AI/i))
     await waitFor(() => expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('Em An ngoan, tích cực.'))
-    expect(api.rewriteCommentsBatch).toHaveBeenCalledWith([{ name: 'An', raw: 'ngoan' }])
+    expect(api.rewriteCommentsBatch).toHaveBeenCalledWith([{ name: 'An', raw: 'ngoan' }], expect.any(String))
     fireEvent.click(screen.getByText(/hoàn tác tất cả/i))
     expect(screen.getByLabelText(/^nhận xét An$/i)).toHaveValue('ngoan')
   })

@@ -118,14 +118,20 @@ export async function rewriteCommentsBatch(
   apiKey: string,
   items: { name: string; raw: string }[],
   styleHint: string,
+  lessonContent = '',
   fetchFn: typeof fetch = fetch,
 ): Promise<string[]> {
   if (items.length === 0) return []
 
   const list = items.map((it, i) => `${i + 1}. ${it.name} — ${it.raw}`).join('\n')
+  const lessonBlock = lessonContent.trim()
+    ? 'Nội dung bài học buổi này (dùng làm ngữ cảnh, có thể lồng nhẹ vào nhận xét cho sát bài, KHÔNG bịa thêm):\n' +
+      '---\n' + lessonContent.trim() + '\n---\n'
+    : ''
   const prompt =
     'Bạn là trợ lý giúp giáo viên viết lại nhận xét học sinh cho khách quan, đúng mực.\n' +
     `Văn phong yêu cầu: ${styleHint}\n` +
+    lessonBlock +
     'Với MỖI học sinh dưới đây, viết lại nhận xét: giữ đúng ý gốc, KHÔNG thêm thông tin bịa, độ dài 1-2 câu.\n' +
     'CHỈ trả về một mảng JSON hợp lệ, mỗi phần tử dạng {"i": <số thứ tự>, "text": "<nhận xét đã viết lại>"}, ' +
     'đúng thứ tự, KHÔNG kèm giải thích, KHÔNG bọc trong ```.\n' +

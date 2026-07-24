@@ -38,9 +38,10 @@ export default function SettingsPage(): JSX.Element {
     setSaved(true)
   }
 
-  // Lưu ngay tài khoản LMS khi rời ô nhập, để giá trị không bị mất nếu quên bấm "Lưu".
-  const persistLms = async (): Promise<void> => {
-    await window.api.updateConfig({ lmsEmail: config.lmsEmail, lmsPassword: config.lmsPassword })
+  // Lưu ngay tài khoản LMS khi rời ô nhập. Nhận patch trực tiếp từ sự kiện để tránh
+  // stale-closure (giá trị vừa gõ chưa kịp commit vào state) làm mất email/mật khẩu.
+  const persistLms = async (patch: Partial<AppConfig>): Promise<void> => {
+    await window.api.updateConfig(patch)
     setLmsSaved(true)
   }
 
@@ -145,6 +146,15 @@ export default function SettingsPage(): JSX.Element {
             rows={2}
           />
         </div>
+        <label className="check" style={{ marginTop: 12 }}>
+          <input
+            type="checkbox"
+            checked={config.includeLessonInRewrite ?? false}
+            onChange={e => set('includeLessonInRewrite', e.target.checked)}
+          />
+          Khi sửa nhận xét bằng AI, lồng nội dung bài học vào ngữ cảnh (nhận xét sát bài hơn)
+        </label>
+        <p className="field-hint" style={{ marginTop: 4 }}>Nhớ bấm "Lưu" sau khi đổi.</p>
       </section>
 
       <section className="section">
@@ -161,7 +171,7 @@ export default function SettingsPage(): JSX.Element {
             type="email"
             value={config.lmsEmail ?? ''}
             onChange={e => { set('lmsEmail', e.target.value || null); setLmsSaved(false) }}
-            onBlur={() => void persistLms()}
+            onBlur={e => void persistLms({ lmsEmail: e.target.value || null })}
             placeholder="email@mindx.edu.vn"
           />
         </div>
@@ -175,7 +185,7 @@ export default function SettingsPage(): JSX.Element {
               type={showPassword ? 'text' : 'password'}
               value={config.lmsPassword ?? ''}
               onChange={e => { set('lmsPassword', e.target.value || null); setLmsSaved(false) }}
-              onBlur={() => void persistLms()}
+              onBlur={e => void persistLms({ lmsPassword: e.target.value || null })}
             />
             <button
               type="button"

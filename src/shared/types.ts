@@ -8,6 +8,8 @@ export interface AppConfig {
   geminiModel: string
   zaloMessageTemplate: string
   commentStyleHint: string
+  /** Khi bật, "Sửa tất cả bằng AI" lồng nội dung bài học vào ngữ cảnh để nhận xét sát bài hơn. */
+  includeLessonInRewrite?: boolean
   lmsEmail: string | null
   lmsPassword: string | null
 }
@@ -137,6 +139,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   geminiModel: DEFAULT_GEMINI_MODEL,
   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
   commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
+  includeLessonInRewrite: false,
   lmsEmail: null,
   lmsPassword: null,
 }
@@ -241,7 +244,7 @@ export interface AppApi {
   extractLessonFromPdf(): Promise<string>
   rewriteComment(studentName: string, raw: string): Promise<string>
   /** Viết lại nhận xét cho nhiều HS trong 1 request. Trả về mảng cùng thứ tự với đầu vào. */
-  rewriteCommentsBatch(items: { name: string; raw: string }[]): Promise<string[]>
+  rewriteCommentsBatch(items: { name: string; raw: string }[], lessonContent?: string): Promise<string[]>
   lmsOpenBrowser(): Promise<{ loggedIn: boolean }>
   lmsPostSession(params: LmsPostParams): Promise<LmsPostResult>
   lmsPostSessionAndSave(
