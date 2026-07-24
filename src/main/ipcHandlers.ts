@@ -9,7 +9,7 @@ import { ClassRepository } from './classes/ClassRepository'
 import { ContentRepository } from './content/ContentRepository'
 import { mergeAbsentStudentNames } from '../shared/lmsSync'
 import { buildZaloMessage } from '../shared/autoSend'
-import { assessLmsDelivery } from '../shared/lmsDelivery'
+import { assessLmsDelivery, assessZaloReadiness } from '../shared/lmsDelivery'
 import { ZALO_TEST_SEARCH_TERM } from './automation/ZaloDesktopAutomator'
 
 export interface IpcDeps {
@@ -92,6 +92,11 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         current.absentStudentIds ?? [],
         postResult.absentStudentNames,
       )
+      const attendedStudentIds = mergeAbsentStudentNames(
+        request.students,
+        current.attendedStudentIds ?? [],
+        postResult.attendedStudentNames,
+      )
       const assessment = assessLmsDelivery(request.students, postResult, {
         postedStudentIds: current.lmsPostedStudentIds,
         absentStudentIds,
@@ -99,11 +104,13 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
       const evidenceChanged =
         assessment.absentStudentIds.length !== (current.absentStudentIds ?? []).length
         || assessment.postedStudentIds.length !== (current.lmsPostedStudentIds ?? []).length
+        || attendedStudentIds.length !== (current.attendedStudentIds ?? []).length
       if (!evidenceChanged) return { postResult, content: current }
 
       const updated: SessionContent = {
         ...current,
         absentStudentIds: assessment.absentStudentIds,
+        attendedStudentIds,
         lmsPostedStudentIds: assessment.postedStudentIds,
         ...(assessment.complete ? { postedToLms: true } : {}),
       }
@@ -131,52 +138,17 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
         } satisfies ZaloSendSessionResult
       }
 
-      const knownAbsent = new Set(content.absentStudentIds ?? [])
-      const postResult = await deps.runLmsPostExclusive(postSession => postSession({
-        classCode: cls.code,
-        sessionDate: session.dateTime.slice(0, 10),
-        lessonContent: content.lessonContent,
-        homework: content.homework,
-        comments: cls.students
-          .filter(student => !knownAbsent.has(student.id))
-          .map(student => {
-            const comment = content.comments.find(item => item.studentId === student.id)
-            return {
-              studentName: student.name,
-              text: comment?.polished || comment?.raw || '',
-            }
-          })
-          .filter(comment => comment.text.trim() !== ''),
-      }))
-      const confirmedAbsentIds = mergeAbsentStudentNames(
-        cls.students,
-        content.absentStudentIds ?? [],
-        postResult.absentStudentNames,
-      )
-      const assessment = assessLmsDelivery(cls.students, postResult, {
-        postedStudentIds: content.lmsPostedStudentIds,
-        absentStudentIds: confirmedAbsentIds,
-      })
-      const lmsPersisted = await contentRepository.updateMetadata(
-        request.sessionId,
-        {
-          lmsPostedStudentIds: assessment.postedStudentIds,
-          absentStudentIds: assessment.absentStudentIds,
-          ...(assessment.complete ? { postedToLms: true } : {}),
-        },
-      )
-      const current = lmsPersisted ?? {
-        ...content,
-        lmsPostedStudentIds: assessment.postedStudentIds,
-        absentStudentIds: assessment.absentStudentIds,
-      }
-      if (!assessment.complete) {
+      // Nút "Gửi Zalo" KHÔNG post lại nhận xét lên LMS. Chỉ cần đủ thông tin điểm danh
+      // (đã thu qua "Gửi lên LMS" hoặc "Đồng bộ từ LMS"). HS nghỉ dài hạn bị loại.
+      const readiness = assessZaloReadiness(cls.students, content)
+      if (!readiness.ready) {
         return {
           status: 'blocked',
-          message: `Không gửi Zalo vì LMS chưa hoàn tất: ${assessment.blockers.join(', ')}`,
-          content: current,
+          message: `Chưa đủ thông tin điểm danh. Hãy Gửi lên LMS hoặc Đồng bộ từ LMS trước: ${readiness.unknownStudentNames.join(', ')}`,
+          content,
         }
       }
+      const current = content
 
       const config = await deps.configStore.load()
       const message = buildZaloMessage(

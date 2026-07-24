@@ -324,12 +324,13 @@ describe('createIpcHandlers — Zalo Web', () => {
     lessonContent: 'Bài học',
     homework: 'Bài tập',
     comments: [{ studentId: 'st1', raw: 'Ngoan', polished: '' }],
+    attendedStudentIds: ['st1'],
   }
 
-  function makeZaloDeps(stored: SessionContent = content) {
+  function makeZaloDeps(stored: SessionContent = content, classArg: SchoolClass = cls) {
     let current = stored
     const events: string[] = []
-    const classRepo = { get: vi.fn(async () => cls) }
+    const classRepo = { get: vi.fn(async () => classArg) }
     const contentRepo = {
       get: vi.fn(async () => current),
       updateMetadata: vi.fn(async (_sessionId: string, patch: Partial<SessionContent>) => {
@@ -365,12 +366,13 @@ describe('createIpcHandlers — Zalo Web', () => {
     return { deps, contentRepo, sendZaloMessage, lmsPostSession, events }
   }
 
-  it('reloads current data, sends and persists zaloSentAt only after sent', async () => {
-    const { deps, contentRepo, sendZaloMessage, events } = makeZaloDeps()
+  it('gửi Zalo mà KHÔNG post lại LMS khi đã đủ điểm danh', async () => {
+    const { deps, contentRepo, sendZaloMessage, lmsPostSession, events } = makeZaloDeps()
     const api = createIpcHandlers(deps as never)
 
     const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
 
+    expect(lmsPostSession).not.toHaveBeenCalled()
     expect(sendZaloMessage).toHaveBeenCalledWith({
       searchTerm: 'Dương',
       message: expect.stringContaining('Lớp A1'),
@@ -380,28 +382,57 @@ describe('createIpcHandlers — Zalo Web', () => {
     })
     expect(result.status).toBe('sent')
     expect(result.content.zaloSentAt).toBe('2026-07-23T12:00:00.000Z')
-    expect(events).toEqual(['lms', 'save-lms', 'zalo', 'save-zalo'])
+    expect(events).toEqual(['zalo', 'save-zalo'])
   })
 
-  it('blocks Zalo when an attending student was not posted', async () => {
-    const { deps, contentRepo, sendZaloMessage, lmsPostSession } = makeZaloDeps()
-    lmsPostSession.mockResolvedValue({
-      posted: [],
-      skipped: ['An (lỗi: timeout)'],
-      absentStudentNames: [],
-      attendedStudentNames: [],
+  it('gửi được dù có HS lỗi kỹ thuật miễn là đã biết điểm danh', async () => {
+    // An lỗi post nhận xét nhưng vẫn được ghi attended → Zalo vẫn gửi.
+    const { deps, sendZaloMessage, lmsPostSession } = makeZaloDeps()
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(lmsPostSession).not.toHaveBeenCalled()
+    expect(result.status).toBe('sent')
+    expect(sendZaloMessage).toHaveBeenCalled()
+  })
+
+  it('chặn Zalo khi còn HS chưa rõ điểm danh', async () => {
+    const { deps, contentRepo, sendZaloMessage, lmsPostSession } = makeZaloDeps({
+      ...content,
+      attendedStudentIds: [],
+      absentStudentIds: [],
     })
     const api = createIpcHandlers(deps as never)
 
     const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
 
     expect(result.status).toBe('blocked')
+    expect(result.message).toContain('Chưa đủ thông tin điểm danh')
     expect(result.message).toContain('An')
+    expect(lmsPostSession).not.toHaveBeenCalled()
     expect(sendZaloMessage).not.toHaveBeenCalled()
     expect(contentRepo.updateMetadata).not.toHaveBeenCalledWith(
       'ss1',
       expect.objectContaining({ zaloSentAt: expect.any(String) }),
     )
+  })
+
+  it('bỏ qua HS nghỉ dài hạn khi xét điều kiện gửi', async () => {
+    const clsWithDropped: SchoolClass = {
+      ...cls,
+      students: [
+        { id: 'st1', name: 'An' },
+        { id: 'st2', name: 'Bình', droppedOut: true },
+      ],
+    }
+    const { deps, sendZaloMessage } = makeZaloDeps(content, clsWithDropped)
+    const api = createIpcHandlers(deps as never)
+
+    const result = await api.zaloSendSession({ classId: 'c1', sessionId: 'ss1' })
+
+    expect(result.status).toBe('sent')
+    expect(sendZaloMessage).toHaveBeenCalled()
   })
 
   it('does not invoke Zalo when latest content is already sent', async () => {
