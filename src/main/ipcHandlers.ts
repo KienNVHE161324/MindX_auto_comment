@@ -81,7 +81,7 @@ export function createIpcHandlers(deps: IpcDeps): AppApi {
       ])
       if (request.students.every(student => handledBefore.has(student.id))) {
         return {
-          postResult: { posted: [], skipped: [], absentStudentNames: [] },
+          postResult: { posted: [], skipped: [], absentStudentNames: [], attendedStudentNames: [] },
           content: current,
         }
       }

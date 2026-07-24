@@ -258,10 +258,11 @@ describe('getStudentCommentButtonPattern', () => {
 
 describe('makeLmsPostResult', () => {
   it('tách học sinh nghỉ khỏi lỗi/thiếu nội dung', () => {
-    expect(makeLmsPostResult(['An'], ['Bình'], ['Bình', 'Lỗi'])).toEqual({
+    expect(makeLmsPostResult(['An'], ['Bình'], ['Bình', 'Lỗi'], ['An'])).toEqual({
       posted: ['An'],
       absentStudentNames: ['Bình'],
       skipped: ['Bình', 'Lỗi'],
+      attendedStudentNames: ['An'],
     })
   })
 })

@@ -12,6 +12,7 @@ describe('assessLmsDelivery', () => {
       posted: ['Lương Ngọc Việt'],
       skipped: ['Nguyễn Sách Sâm'],
       absentStudentNames: ['Nguyễn Sách Sâm'],
+      attendedStudentNames: ['Lương Ngọc Việt'],
     })).toEqual({
       complete: true,
       blockers: [],
@@ -25,6 +26,7 @@ describe('assessLmsDelivery', () => {
       posted: ['Lương Ngọc Việt'],
       skipped: ['Nguyễn Sách Sâm (lỗi: timeout)'],
       absentStudentNames: [],
+      attendedStudentNames: ['Lương Ngọc Việt', 'Nguyễn Sách Sâm'],
     })).toEqual({
       complete: false,
       blockers: ['Nguyễn Sách Sâm'],
@@ -38,6 +40,7 @@ describe('assessLmsDelivery', () => {
       posted: [],
       skipped: [],
       absentStudentNames: [],
+      attendedStudentNames: [],
       error: 'Không tìm thấy buổi học',
     })).toEqual({
       complete: false,
@@ -52,6 +55,7 @@ describe('assessLmsDelivery', () => {
       posted: ['  LƯƠNG   NGỌC VIỆT  '],
       skipped: [],
       absentStudentNames: [],
+      attendedStudentNames: ['  LƯƠNG   NGỌC VIỆT  '],
     }, {
       absentStudentIds: ['s2'],
     })).toEqual({

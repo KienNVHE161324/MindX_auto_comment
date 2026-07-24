@@ -1,104 +1,47 @@
-### Task 1: Data model — types & IPC
+### Task 1: Chuyển popup nhận xét LMS sang manual mode
 
 **Files:**
-- Modify: `src/shared/types.ts`
-- Test: `src/shared/types.test.ts`
+- Modify: `src/main/automation/LmsAutomator.ts`
+- Test: `src/main/automation/LmsAutomator.test.ts`
 
 **Interfaces:**
-- Produces: `SessionContent.absentStudentIds?: string[]`; `LmsContentTarget { classCode, sessionId, sessionDate }`; `LmsContentResult { classCode, sessionDate, lessonContent, homework, students: {name, attended, comment}[] }`; `LmsSyncAllResult { newClasses: LmsScrapedClass[], contentResults: LmsContentResult[], skippedClasses: string[] }`; `IPC.lmsSyncAll = 'lms:syncAll'`; `AppApi.lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>`.
+- Produces: `getStudentCommentManualModeSelector(): string`
+- Consumes: popup Playwright `Locator` sau khi vùng nhận xét được click.
 
-- [ ] **Step 1: Write the failing test**
-
-Thêm vào cuối `src/shared/types.test.ts`:
+- [ ] **Step 1: Viết test đỏ cho selector manual mode**
 
 ```ts
-import { IPC } from './types'
-
-describe('IPC lms sync', () => {
-  it('dùng key lms:syncAll (thay cho lms:syncClasses cũ)', () => {
-    expect(IPC.lmsSyncAll).toBe('lms:syncAll')
-  })
-})
+expect(getStudentCommentManualModeSelector()).toBe(
+  '[aria-label="In by-areas mode, click to switch to manual mode"]',
+)
 ```
 
-(Giữ nguyên import `DEFAULT_CONFIG, DEFAULT_ZALO_TEMPLATE` đã có ở đầu file, chỉ thêm `IPC` vào cùng dòng import.)
+- [ ] **Step 2: Chạy test để xác nhận thất bại**
 
-- [ ] **Step 2: Run test to verify it fails**
+Run: `npm.cmd test -- src/main/automation/LmsAutomator.test.ts`
 
-Run: `npm test -- src/shared/types.test.ts`
-Expected: FAIL — `IPC.lmsSyncAll` is `undefined`.
+Expected: FAIL vì helper chưa tồn tại.
 
-- [ ] **Step 3: Implement**
-
-Trong `src/shared/types.ts`, sửa `SessionContent`:
+- [ ] **Step 3: Thêm selector và thao tác chuyển mode**
 
 ```ts
-export interface SessionContent {
-  id: string
-  classId: string
-  sessionId: string
-  lessonContent: string
-  homework: string
-  comments: StudentComment[]
-  absentStudentIds?: string[]
+export function getStudentCommentManualModeSelector(): string {
+  return '[aria-label="In by-areas mode, click to switch to manual mode"]'
 }
 ```
 
-Thêm sau `LmsSyncResult`:
+Sau `await commentArea.click(...)`, tìm selector trong popup. Nếu tồn tại và đang hiển thị, click nó; sau đó mới chờ `.ql-editor[contenteditable="true"]`, fill nội dung mới, xác minh và Save. Bỏ việc đọc nội dung `<p>` cũ vì luồng luôn ghi đè và đoạn đọc này có thể nhầm nội dung giao diện by-areas.
 
-```ts
-export interface LmsContentTarget {
-  classCode: string
-  sessionId: string
-  sessionDate: string  // 'YYYY-MM-DD'
-}
+- [ ] **Step 4: Chạy test mục tiêu**
 
-export interface LmsContentResult {
-  classCode: string
-  sessionDate: string  // 'YYYY-MM-DD'
-  lessonContent: string
-  homework: string
-  students: { name: string; attended: boolean; comment: string }[]
-}
+Run: `npm.cmd test -- src/main/automation/LmsAutomator.test.ts`
 
-export interface LmsSyncAllResult {
-  newClasses: LmsScrapedClass[]
-  contentResults: LmsContentResult[]
-  skippedClasses: string[]
-}
+Expected: PASS.
+
+- [ ] **Step 5: Commit thay đổi LMS**
+
+```powershell
+git add -- src/main/automation/LmsAutomator.ts src/main/automation/LmsAutomator.test.ts
+git commit -m "fix: switch LMS comments to manual mode"
 ```
-
-Trong khối `IPC`, đổi:
-
-```ts
-  lmsSyncClasses: 'lms:syncClasses',
-```
-thành
-```ts
-  lmsSyncAll: 'lms:syncAll',
-```
-
-Trong `AppApi`, đổi:
-
-```ts
-  lmsSyncClasses(): Promise<LmsSyncResult>
-```
-thành
-```ts
-  lmsSyncAll(params: { existingCodes: string[]; contentTargets: LmsContentTarget[] }): Promise<LmsSyncAllResult>
-```
-
-- [ ] **Step 4: Run test to verify it passes**
-
-Run: `npm test -- src/shared/types.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/shared/types.ts src/shared/types.test.ts
-git commit -m "feat(types): thêm absentStudentIds, LmsSyncAll types, đổi IPC lmsSyncClasses -> lmsSyncAll"
-```
-
----
 

@@ -180,7 +180,7 @@ describe('createIpcHandlers — LMS automation', () => {
       extractPdf: vi.fn(), rewrite: vi.fn(), rewriteBatch: vi.fn(),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({
-        posted: ['An'], skipped: [], absentStudentNames: [],
+        posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'],
       })),
       lmsSyncAll: vi.fn(async () => ({ newClasses: [], contentResults: [], skippedClasses: [] })),
     }
@@ -245,6 +245,7 @@ describe('createIpcHandlers — LMS automation', () => {
       posted: ['An'],
       skipped: [],
       absentStudentNames: [],
+      attendedStudentNames: ['An'],
     }))
     const runLmsPostExclusive = <T,>(
       operation: (post: typeof postSession) => Promise<T>,
@@ -345,7 +346,7 @@ describe('createIpcHandlers — Zalo Web', () => {
     )
     const lmsPostSession = vi.fn(async (): Promise<LmsPostResult> => {
       events.push('lms')
-      return { posted: ['An'], skipped: [], absentStudentNames: [] }
+      return { posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'] }
     })
     const common = makeDeps()
     const deps = {
@@ -388,6 +389,7 @@ describe('createIpcHandlers — Zalo Web', () => {
       posted: [],
       skipped: ['An (lỗi: timeout)'],
       absentStudentNames: [],
+      attendedStudentNames: [],
     })
     const api = createIpcHandlers(deps as never)
 

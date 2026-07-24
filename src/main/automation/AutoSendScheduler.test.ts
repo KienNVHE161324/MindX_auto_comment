@@ -37,7 +37,7 @@ function makeDeps(overrides: Partial<AutoSendDeps> = {}): AutoSendDeps {
     getConfig: vi.fn(async () => DEFAULT_CONFIG),
     lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
     lmsPostSession: vi.fn(async () => ({
-      posted: ['An'], skipped: [], absentStudentNames: [],
+      posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'],
     })),
     sendZaloMessage: vi.fn(async () => ({ status: 'sent' as const })),
     now: () => now,
@@ -336,7 +336,7 @@ describe('AutoSendScheduler.tick', () => {
       getClasses: vi.fn(async () => [makeCls()]),
       getContent: vi.fn(async () => makeContent()),
       lmsPostSession: vi.fn(async () => ({
-        posted: [], skipped: [], absentStudentNames: [], error: 'Mất kết nối',
+        posted: [], skipped: [], absentStudentNames: [], attendedStudentNames: [], error: 'Mất kết nối',
       })),
     })
     await new AutoSendScheduler(deps).tick()
@@ -369,6 +369,7 @@ describe('AutoSendScheduler.tick', () => {
         posted: [],
         skipped: ['Nguyễn Sách Sâm'],
         absentStudentNames: ['Sách Sâm'],
+        attendedStudentNames: [],
       })),
       sendZaloMessage: vi.fn(async () => {
         events.push('zalo')
@@ -402,6 +403,7 @@ describe('AutoSendScheduler.tick', () => {
         posted: ['An'],
         skipped: ['Bình (lỗi: popup không mở)'],
         absentStudentNames: [],
+        attendedStudentNames: ['An', 'Bình'],
       })),
     })
 

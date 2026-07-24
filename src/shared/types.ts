@@ -23,6 +23,8 @@ export interface Student {
   id: string
   name: string
   note?: string
+  /** true khi HS đã nghỉ học dài hạn — loại khỏi cả Zalo lẫn LMS ở mọi buổi. */
+  droppedOut?: boolean
 }
 
 export interface ClassSession {
@@ -67,6 +69,8 @@ export interface SessionContent {
   homework: string
   comments: StudentComment[]
   absentStudentIds?: string[]
+  /** HS được LMS xác nhận CÓ đi học buổi này (kể cả khi post nhận xét bị lỗi kỹ thuật). */
+  attendedStudentIds?: string[]
   /** Học sinh đã được LMS xác nhận lưu nhận xét thành công. */
   lmsPostedStudentIds?: string[]
   /** true khi đã gửi lên LMS thành công (có HS được nhận xét, không lỗi) */
@@ -148,6 +152,7 @@ export interface LmsPostResult {
   posted: string[]   // tên HS đã được nhận xét
   skipped: string[]  // tên HS nghỉ hoặc không có nội dung
   absentStudentNames: string[]  // tên HS được LMS xác nhận nghỉ
+  attendedStudentNames: string[]  // tên HS đi học (không nghỉ), bất kể post thành công hay lỗi
   error?: string
 }
 

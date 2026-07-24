@@ -23,7 +23,7 @@ function stub(overrides: Partial<Window['api']> = {}) {
     rewriteCommentsBatch: vi.fn(async (items: { name: string; raw: string }[]) => items.map(() => 'Em An ngoan, tích cực.')),
     lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
     lmsPostSession: vi.fn(async () => ({
-      posted: ['An'], skipped: [], absentStudentNames: [],
+      posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'],
     })),
     lmsPostSessionAndSave: vi.fn(),
     lmsSyncAll: vi.fn(),
@@ -116,7 +116,7 @@ describe('SessionComposer', () => {
       getContent: vi.fn(() => storedContent),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({
-        posted: ['An'], skipped: ['Bình'], absentStudentNames: ['Bình'],
+        posted: ['An'], skipped: ['Bình'], absentStudentNames: ['Bình'], attendedStudentNames: ['An'],
       })),
     })
     render(<SessionComposer cls={clsWithTwo} session={session} onDone={() => {}} />)
@@ -423,7 +423,7 @@ describe('SessionComposer', () => {
       saveContent: vi.fn(() => saveResult),
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({
-        posted: ['An'], skipped: [], absentStudentNames: [],
+        posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'],
       })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
@@ -492,7 +492,7 @@ describe('SessionComposer', () => {
   it('gửi LMS thành công -> lưu content với postedToLms=true', async () => {
     const api = stub({
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
-      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [], absentStudentNames: [] })),
+      lmsPostSession: vi.fn(async () => ({ posted: ['An'], skipped: [], absentStudentNames: [], attendedStudentNames: ['An'] })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
     await waitFor(() => screen.getByText(/gửi lên lms/i))
@@ -510,6 +510,7 @@ describe('SessionComposer', () => {
         posted: ['An'],
         skipped: ['Nguyễn Sách Sâm', 'Phạm Bá Long (lỗi: timeout)'],
         absentStudentNames: ['Sách Sâm'],
+        attendedStudentNames: ['An', 'Phạm Bá Long'],
       })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
@@ -534,11 +535,13 @@ describe('SessionComposer', () => {
       posted: string[]
       skipped: string[]
       absentStudentNames: string[]
+      attendedStudentNames: string[]
     }) => void
     const lmsResult = new Promise<{
       posted: string[]
       skipped: string[]
       absentStudentNames: string[]
+      attendedStudentNames: string[]
     }>(resolve => { resolveLms = resolve })
     let resolveSave!: () => void
     const saveResult = new Promise<void>(resolve => { resolveSave = resolve })
@@ -579,6 +582,7 @@ describe('SessionComposer', () => {
       posted: ['An'],
       skipped: ['Nguyễn Sách Sâm'],
       absentStudentNames: ['Sách Sâm'],
+      attendedStudentNames: ['An'],
     })
     await waitFor(() => expect(api.saveContent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -599,7 +603,7 @@ describe('SessionComposer', () => {
     const api = stub({
       lmsOpenBrowser: vi.fn(async () => ({ loggedIn: true })),
       lmsPostSession: vi.fn(async () => ({
-        posted: [], skipped: [], absentStudentNames: [], error: 'Lỗi kết nối',
+        posted: [], skipped: [], absentStudentNames: [], attendedStudentNames: [], error: 'Lỗi kết nối',
       })),
     })
     render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)

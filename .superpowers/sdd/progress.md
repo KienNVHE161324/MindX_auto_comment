@@ -80,3 +80,19 @@ Cần restart app (main-process) sau khi đổi.
 - Verify thủ công (cần restart app): giờ buổi lấy đúng từ LMS; LMS skip-nếu-đã-có-comment (cần HTML popup thật nếu sai); luồng gửi Zalo tự động thật (hiện ghi file Documents).
 - Cơ chế đặc biệt buổi #4/#9 (spec chưa có) — hiện mới chỉ CHẶN gửi LMS.
 - Automation Zalo Desktop thật (hiện là file .txt thay thế).
+
+---
+
+## LMS manual comment + absence status + session grid (2026-07-23)
+
+Plan: docs/superpowers/plans/2026-07-23-lms-absence-to-zalo.md
+Base: ad51e735d547dce3b32f819e0c2dd8a66a721538
+Baseline: 179 tests passed.
+
+- [x] Task 1 — LMS manual comment mode (commits `5306f29..3a497f2`, review clean)
+- [x] Task 2 — Zalo `Tên: nghỉ` + preview timing (commits `1aaccba..7cd70d3`, review clean)
+- [x] Task 3 — LMS result groups (commits `5061371..f693e1f`, review clean)
+- [x] Task 4 — session-row grid alignment (commit `38988f8`, review clean)
+- [ ] Task 5 — integration verification and final review
+
+Minor review note for final triage: `LmsAutomator.test.ts` covers failed save confirmation but not the success branch.

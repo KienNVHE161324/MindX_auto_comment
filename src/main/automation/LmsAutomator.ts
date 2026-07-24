@@ -153,8 +153,9 @@ export function makeLmsPostResult(
   posted: string[],
   absentStudentNames: string[],
   skipped: string[],
+  attendedStudentNames: string[] = [],
 ): LmsPostResult {
-  return { posted, absentStudentNames, skipped }
+  return { posted, absentStudentNames, skipped, attendedStudentNames }
 }
 
 export function shouldWriteLmsSection(text: string): boolean {
@@ -634,6 +635,7 @@ export class LmsAutomator {
     const posted: string[] = []
     const skipped: string[] = []
     const absentStudentNames: string[] = []
+    const attendedStudentNames: string[] = []
     const seenStudents = new Set<string>()
 
     // Bảng HS trong tab "Nhận xét" (scope tránh nhầm table danh sách lớp bên ngoài)
@@ -658,6 +660,9 @@ export class LmsAutomator {
         skipped.push(studentName)
         continue
       }
+
+      // Không nghỉ → ghi điểm danh NGAY, trước khi post; lỗi post sau đó vẫn giữ điểm danh.
+      attendedStudentNames.push(studentName)
 
       const commentData = matchLmsCommentByStudentName(comments, studentName)
 
@@ -749,7 +754,7 @@ export class LmsAutomator {
       }
     }
 
-    return makeLmsPostResult(posted, absentStudentNames, skipped)
+    return makeLmsPostResult(posted, absentStudentNames, skipped, attendedStudentNames)
   }
 
   // ─── Auto-login ────────────────────────────────────────────────────────────
