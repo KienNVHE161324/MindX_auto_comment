@@ -509,8 +509,8 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                   dayOffset: event.target.value as 'same' | 'next',
                 })}
               >
-                <option value="same">cùng ngày buổi học</option>
-                <option value="next">ngày hôm sau buổi học</option>
+                <option value="same">Cùng ngày</option>
+                <option value="next">Hôm sau</option>
               </select>
             </div>
             {c.sessions.length > 0 && (
