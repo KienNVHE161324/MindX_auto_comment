@@ -12,6 +12,7 @@ export default function App(): JSX.Element {
         <button className={`tab${tab === 'classes' ? ' active' : ''}`} onClick={() => setTab('classes')}>Lớp học</button>
         <button className={`tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>Cấu hình</button>
         <button className={`tab${tab === 'guide' ? ' active' : ''}`} onClick={() => setTab('guide')}>Hướng dẫn</button>
+        <span className="app-author">Tác giả: kiennv@mindx.net.vn</span>
       </nav>
       {/* Giữ các tab luôn mounted (chỉ ẩn/hiện) để không mất dữ liệu đang nhập khi chuyển tab. */}
       <div style={{ display: tab === 'classes' ? 'block' : 'none' }}>
