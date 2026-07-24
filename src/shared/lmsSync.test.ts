@@ -175,6 +175,7 @@ describe('mergeContentResult', () => {
       comments: [{ studentId: 's1', raw: 'Ngoan', polished: 'Ngoan' }],
       absentStudentIds: [],
       attendedStudentIds: ['s1'],
+      postedToLms: true,
     })
   })
 

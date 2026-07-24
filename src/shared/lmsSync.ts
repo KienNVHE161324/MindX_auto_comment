@@ -154,7 +154,8 @@ export function mergeContentResult(
     absentStudentIds,
     attendedStudentIds,
     ...(existing?.lmsPostedStudentIds ? { lmsPostedStudentIds: existing.lmsPostedStudentIds } : {}),
-    ...(existing?.postedToLms ? { postedToLms: existing.postedToLms } : {}),
+    // LMS đã có nhận xét cho buổi này → coi như "đã nhận xét" (giữ nếu app đã đánh dấu trước đó).
+    ...(commentByStudent.size > 0 || existing?.postedToLms ? { postedToLms: true } : {}),
     ...(existing?.zaloSentAt ? { zaloSentAt: existing.zaloSentAt } : {}),
   }
 }

@@ -355,6 +355,7 @@ describe('ClassesPage', () => {
       comments: [{ studentId: 's1', raw: 'Ngoan', polished: 'Ngoan' }],
       absentStudentIds: [],
       attendedStudentIds: ['s1'],
+      postedToLms: true,
     }))
     await waitFor(() => expect(screen.getByText(/đã cập nhật nội dung buổi mới nhất cho 1 lớp/i)).toBeInTheDocument())
     expect(screen.getByText(/đã cập nhật nội dung buổi mới nhất cho 1 lớp/i).textContent).toContain('A1')

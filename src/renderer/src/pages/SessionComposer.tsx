@@ -8,6 +8,7 @@ import { buildZaloMessage } from '../../../shared/autoSend'
 import { getSessionNumber, isLmsBlockedSession } from '../../../shared/sessionContent'
 import { excludeAbsentSkipped } from '../../../shared/lmsSync'
 import { ArrowLeftIcon } from '../components/Icons'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
   return {
@@ -76,6 +77,7 @@ export default function SessionComposer(
   const [previewRefreshing, setPreviewRefreshing] = useState(false)
   const [lmsStatus, setLmsStatus] = useState<string>('')
   const [lmsResult, setLmsResult] = useState<LmsPostResult | null>(null)
+  const [confirm, setConfirm] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null)
   const contentLoadingRef = useRef(true)
   const configLoadingRef = useRef(true)
   const operationRef = useRef<ComposerOperation | null>(null)
@@ -328,6 +330,31 @@ export default function SessionComposer(
     }
   }
 
+  // Nếu buổi đã nhận xét LMS / đã gửi Zalo mà bấm gửi lại → hỏi xác nhận trước.
+  const requestPostToLms = (): void => {
+    if (content.postedToLms) {
+      setConfirm({
+        title: 'Gửi lại lên LMS?',
+        message: 'Buổi này đã có nhận xét trên LMS. Gửi lại sẽ ghi đè nhận xét cũ. Bạn có chắc muốn tiếp tục?',
+        onConfirm: () => { setConfirm(null); void postToLms() },
+      })
+      return
+    }
+    void postToLms()
+  }
+
+  const requestSendToZalo = (): void => {
+    if (content.zaloSentAt) {
+      setConfirm({
+        title: 'Gửi lại Zalo?',
+        message: 'Buổi này đã gửi Zalo. Bạn có chắc muốn gửi lại tin cho phụ huynh?',
+        onConfirm: () => { setConfirm(null); void sendToZalo() },
+      })
+      return
+    }
+    void sendToZalo()
+  }
+
   const save = async (): Promise<void> => {
     if (!beginOperation('save')) return
     try {
@@ -460,7 +487,7 @@ export default function SessionComposer(
         <button className="btn btn-primary" onClick={save} disabled={contentLocked}>Lưu</button>
         {saved && <span className="text-success">Đã lưu ✓</span>}
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={postToLms} disabled={contentLocked || lmsBlocked}>
+        <button className="btn btn-primary" onClick={requestPostToLms} disabled={contentLocked || lmsBlocked}>
           {lmsPosting ? lmsStatus || 'Đang xử lý...' : 'Gửi lên LMS'}
         </button>
       </div>
@@ -505,7 +532,7 @@ export default function SessionComposer(
               </button>
               <button
                 className="btn btn-sm btn-primary"
-                onClick={() => void sendToZalo()}
+                onClick={requestSendToZalo}
                 disabled={contentLocked}
               >
                 {zaloPosting ? 'Đang gửi Zalo...' : 'Gửi Zalo'}
@@ -520,6 +547,16 @@ export default function SessionComposer(
             {preview}
           </pre>
         </section>
+      )}
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm.title}
+          message={confirm.message}
+          confirmLabel="Gửi lại"
+          onConfirm={confirm.onConfirm}
+          onCancel={() => setConfirm(null)}
+        />
       )}
     </div>
   )
