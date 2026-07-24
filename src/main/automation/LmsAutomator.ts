@@ -1080,6 +1080,7 @@ export class LmsAutomator {
     const rows = page.locator('div.comment-list-table table tbody tr')
     const count = await rows.count()
     const result: { name: string; attended: boolean; comment: string }[] = []
+    let dumpedReadPopup = false  // chỉ dump DOM popup của HS đầu để chẩn đoán selector
 
     for (let i = 0; i < count; i++) {
       const row = rows.nth(i)
@@ -1100,12 +1101,17 @@ export class LmsAutomator {
         const popup = page.locator('[role="dialog"]').last()
         await popup.waitFor({ state: 'visible', timeout: 8_000 })
 
-        const contentEl = popup.locator('div.jss2722').first()
-        let comment = ''
-        if ((await contentEl.count()) > 0) {
-          const isPlaceholder = await contentEl.evaluate(el => el.className.includes('place-holder'))
-          if (!isPlaceholder) comment = ((await contentEl.textContent()) ?? '').trim()
+        // Dump DOM popup của HS ĐẦU TIÊN để lấy đúng selector nhận xét (class jss đổi giữa các build).
+        if (!dumpedReadPopup) {
+          dumpedReadPopup = true
+          try {
+            const html = await popup.evaluate(el => el.outerHTML)
+            fs.writeFileSync(path.join(this.debugDir, 'lms-read-comment-debug.html'), html, 'utf8')
+            console.log(`[LMS] Đã lưu DOM popup nhận xét (HS: ${name}) để chẩn đoán selector`)
+          } catch { /* ignore */ }
         }
+
+        const comment = await this.readCommentFromPopup(popup)
 
         await page.keyboard.press('Escape')
         await popup.waitFor({ state: 'hidden', timeout: 5_000 }).catch(() => {})
@@ -1119,5 +1125,28 @@ export class LmsAutomator {
     }
 
     return result
+  }
+
+  /**
+   * Đọc nhận xét đã lưu trong popup xem nhận xét. Thử nhiều selector bền vững thay vì
+   * class jss build-specific: editor Quill (như luồng ghi), rồi các <p>/ô nội dung có text.
+   * Bỏ qua placeholder rỗng.
+   */
+  private async readCommentFromPopup(popup: Locator): Promise<string> {
+    const candidates = [
+      popup.locator('.ql-editor').first(),
+      popup.locator('table td p').first(),
+      popup.locator('[class*="place-holder"], .ql-editor, table td p').first(),
+    ]
+    for (const el of candidates) {
+      if ((await el.count()) === 0) continue
+      const isPlaceholder = await el
+        .evaluate(node => (node as HTMLElement).className.includes('place-holder'))
+        .catch(() => false)
+      if (isPlaceholder) return ''
+      const text = ((await el.innerText().catch(() => '')) ?? '').trim()
+      if (text) return text
+    }
+    return ''
   }
 }

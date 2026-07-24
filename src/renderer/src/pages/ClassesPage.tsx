@@ -69,7 +69,7 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
   const [syncPreview, setSyncPreview] = useState<LmsScrapedClass[] | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [sessionContents, setSessionContents] = useState<Map<string, SessionContent>>(new Map())
-  const [syncSummary, setSyncSummary] = useState<{ updated: number; skipped: number } | null>(null)
+  const [syncSummary, setSyncSummary] = useState<{ updatedCodes: string[]; skippedCodes: string[] } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<SchoolClass | null>(null)
   const [savingSchedules, setSavingSchedules] = useState<Set<string>>(new Set())
   const [scheduleError, setScheduleError] = useState<string | null>(null)
@@ -153,7 +153,10 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
       }
 
       setSyncPreview(newClasses)
-      setSyncSummary({ updated: contentResults.length, skipped: skippedClasses.length })
+      setSyncSummary({
+        updatedCodes: contentResults.map(r => r.classCode),
+        skippedCodes: skippedClasses,
+      })
       if (contentResults.length > 0) await reload()
     } catch (err) {
       setSyncError((err as Error).message)
@@ -309,10 +312,16 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
       {scheduleError && <p className="alert alert-error">{scheduleError}</p>}
 
       {syncSummary && (
-        <p className="alert alert-info">
-          Đã cập nhật nội dung {syncSummary.updated} buổi
-          {syncSummary.skipped > 0 ? `, bỏ qua ${syncSummary.skipped} lớp (LMS chưa có nội dung buổi mới nhất)` : ''}.
-        </p>
+        <div className="alert alert-info">
+          {syncSummary.updatedCodes.length > 0 ? (
+            <div>Đã cập nhật nội dung buổi mới nhất cho {syncSummary.updatedCodes.length} lớp: <strong>{syncSummary.updatedCodes.join(', ')}</strong>.</div>
+          ) : (
+            <div>Không có lớp nào được cập nhật nội dung buổi mới nhất.</div>
+          )}
+          {syncSummary.skippedCodes.length > 0 && (
+            <div style={{ marginTop: 4 }}>Bỏ qua {syncSummary.skippedCodes.length} lớp (LMS chưa có nội dung buổi mới nhất): <strong>{syncSummary.skippedCodes.join(', ')}</strong>.</div>
+          )}
+        </div>
       )}
 
       {catchUpOpen && catchUpItems.length > 0 && (

@@ -356,7 +356,8 @@ describe('ClassesPage', () => {
       absentStudentIds: [],
       attendedStudentIds: ['s1'],
     }))
-    await waitFor(() => expect(screen.getByText(/đã cập nhật nội dung 1 buổi/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/đã cập nhật nội dung buổi mới nhất cho 1 lớp/i)).toBeInTheDocument())
+    expect(screen.getByText(/đã cập nhật nội dung buổi mới nhất cho 1 lớp/i).textContent).toContain('A1')
   })
 
   it('hiện đúng trạng thái buổi: chưa có nội dung / đã soạn nội dung / đã nhận xét', async () => {
