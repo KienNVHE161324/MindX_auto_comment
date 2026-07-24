@@ -443,6 +443,13 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
   color: #fff;
 }
 
+.class-filter-select {
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  height: 30px;
+}
+
 .class-filter-count {
   margin-left: auto;
   color: var(--text-faint);
