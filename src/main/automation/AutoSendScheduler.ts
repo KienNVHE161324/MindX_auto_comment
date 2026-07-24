@@ -17,7 +17,7 @@ import {
   nearestPastSession,
   normalizeAutoSend,
 } from '../../shared/autoSend'
-import { assessLmsDelivery } from '../../shared/lmsDelivery'
+import { assessLmsDelivery, assessZaloReadiness } from '../../shared/lmsDelivery'
 import { mergeAbsentStudentNames } from '../../shared/lmsSync'
 import type { SessionContentMetadataPatch } from '../content/ContentRepository'
 import { ZALO_TEST_SEARCH_TERM } from './ZaloDesktopAutomator'
@@ -251,15 +251,9 @@ export class AutoSendScheduler {
       if (updated.postedToLms) completed.push('lms')
     }
     if (plan.needZalo && allowedChannels.includes('zalo') && !updated.zaloSentAt) {
-      if (!this.hasCompleteLmsEvidence(cls, updated)) {
-        const handled = new Set([
-          ...(updated.lmsPostedStudentIds ?? []),
-          ...(updated.absentStudentIds ?? []),
-        ])
-        const blockers = cls.students
-          .filter(student => !handled.has(student.id))
-          .map(student => student.name)
-        log(`[AutoSend] ${cls.code}: không gửi Zalo vì LMS chưa hoàn tất — ${blockers.join(', ')}`)
+      const readiness = assessZaloReadiness(cls.students, updated)
+      if (!readiness.ready) {
+        log(`[AutoSend] ${cls.code}: không gửi Zalo vì chưa đủ điểm danh — ${readiness.unknownStudentNames.join(', ')}`)
       } else {
         updated = await this.sendZalo(cls, plan.session, updated, log)
         if (updated.zaloSentAt) completed.push('zalo')
@@ -290,7 +284,7 @@ export class AutoSendScheduler {
 
         const absentIds = new Set(freshContent.absentStudentIds ?? [])
         const comments = cls.students
-          .filter(s => !absentIds.has(s.id))
+          .filter(s => !s.droppedOut && !absentIds.has(s.id))
           .map(s => {
             const cm = freshContent.comments.find(c => c.studentId === s.id)
             return { studentName: s.name, text: cm?.polished || cm?.raw || '' }
@@ -315,6 +309,11 @@ export class AutoSendScheduler {
           freshContent.absentStudentIds ?? [],
           result.absentStudentNames,
         )
+        const attendedStudentIds = mergeAbsentStudentNames(
+          cls.students,
+          freshContent.attendedStudentIds ?? [],
+          result.attendedStudentNames,
+        )
         const assessment = assessLmsDelivery(cls.students, result, {
           postedStudentIds: freshContent.lmsPostedStudentIds,
           absentStudentIds: confirmedAbsentIds,
@@ -325,6 +324,7 @@ export class AutoSendScheduler {
         }
         const patch: Partial<SessionContentMetadataPatch> = {
           absentStudentIds: assessment.absentStudentIds,
+          attendedStudentIds,
           lmsPostedStudentIds: assessment.postedStudentIds,
           ...(assessment.complete ? { postedToLms: true } : {}),
         }
@@ -354,11 +354,8 @@ export class AutoSendScheduler {
     cls: SchoolClass,
     content: SessionContent,
   ): boolean {
-    const handled = new Set([
-      ...(content.lmsPostedStudentIds ?? []),
-      ...(content.absentStudentIds ?? []),
-    ])
-    return cls.students.every(student => handled.has(student.id))
+    // Đủ điểm danh: mọi HS còn học (không nghỉ dài hạn) đã biết đi học/nghỉ.
+    return assessZaloReadiness(cls.students, content).ready
   }
 
   private async sendZalo(

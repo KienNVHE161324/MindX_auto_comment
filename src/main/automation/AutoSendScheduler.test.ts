@@ -276,6 +276,7 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       postedToLms: true,
       absentStudentIds: [],
+      attendedStudentIds: ['s1'],
       lmsPostedStudentIds: ['s1'],
     })
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
@@ -382,12 +383,13 @@ describe('AutoSendScheduler.tick', () => {
     expect(deps.sendZaloMessage).not.toHaveBeenCalled()
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       absentStudentIds: ['s2'],
+      attendedStudentIds: [],
       lmsPostedStudentIds: [],
     })
     expect(events).toEqual(['save:lms'])
   })
 
-  it('skip kỹ thuật không được suy diễn thành HS nghỉ', async () => {
+  it('lỗi kỹ thuật post nhận xét không chặn Zalo nếu đã biết điểm danh', async () => {
     const clsWithTwo = makeCls({
       students: [{ id: 's1', name: 'An' }, { id: 's2', name: 'Bình' }],
     })
@@ -403,15 +405,18 @@ describe('AutoSendScheduler.tick', () => {
         posted: ['An'],
         skipped: ['Bình (lỗi: popup không mở)'],
         absentStudentNames: [],
+        // Bình lỗi post nhưng vẫn được ghi điểm danh (đi học).
         attendedStudentNames: ['An', 'Bình'],
       })),
     })
 
     await new AutoSendScheduler(deps).tick()
 
-    expect(deps.sendZaloMessage).not.toHaveBeenCalled()
+    // Đủ điểm danh (An + Bình đều đi học) → Zalo vẫn được gửi dù Bình lỗi post.
+    expect(deps.sendZaloMessage).toHaveBeenCalled()
     expect(deps.updateContentMetadata).toHaveBeenCalledWith('ss1', {
       absentStudentIds: [],
+      attendedStudentIds: ['s1', 's2'],
       lmsPostedStudentIds: ['s1'],
     })
   })

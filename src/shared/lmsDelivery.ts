@@ -22,11 +22,17 @@ const normalizeName = (value: string): string =>
  */
 export function assessZaloReadiness(
   students: Student[],
-  content: { absentStudentIds?: string[]; attendedStudentIds?: string[] },
+  content: {
+    absentStudentIds?: string[]
+    attendedStudentIds?: string[]
+    lmsPostedStudentIds?: string[]
+  },
 ): { ready: boolean; unknownStudentNames: string[] } {
+  // HS đã post nhận xét thành công tức là đã đi học → tính là điểm danh (tương thích data cũ).
   const handled = new Set([
     ...(content.attendedStudentIds ?? []),
     ...(content.absentStudentIds ?? []),
+    ...(content.lmsPostedStudentIds ?? []),
   ])
   const unknownStudentNames = students
     .filter(student => !student.droppedOut && !handled.has(student.id))

@@ -7,7 +7,7 @@ const contentLocks = new Map<string, WorkflowMutex>()
 
 export type SessionContentMetadataPatch = Pick<
   SessionContent,
-  'absentStudentIds' | 'lmsPostedStudentIds' | 'postedToLms' | 'zaloSentAt'
+  'absentStudentIds' | 'attendedStudentIds' | 'lmsPostedStudentIds' | 'postedToLms' | 'zaloSentAt'
 >
 
 function mergeAbsentIds(
@@ -39,6 +39,10 @@ function mergeMetadata(
     existing?.absentStudentIds,
     mergeAbsentIds(content.absentStudentIds, patch.absentStudentIds),
   )
+  const attendedStudentIds = mergeAbsentIds(
+    existing?.attendedStudentIds,
+    mergeAbsentIds(content.attendedStudentIds, patch.attendedStudentIds),
+  )
   const lmsPostedStudentIds = mergeAbsentIds(
     existing?.lmsPostedStudentIds,
     mergeAbsentIds(content.lmsPostedStudentIds, patch.lmsPostedStudentIds),
@@ -54,6 +58,8 @@ function mergeMetadata(
   const merged: SessionContent = { ...content }
   if (absentStudentIds !== undefined) merged.absentStudentIds = absentStudentIds
   else delete merged.absentStudentIds
+  if (attendedStudentIds !== undefined) merged.attendedStudentIds = attendedStudentIds
+  else delete merged.attendedStudentIds
   if (lmsPostedStudentIds !== undefined) merged.lmsPostedStudentIds = lmsPostedStudentIds
   else delete merged.lmsPostedStudentIds
   if (postedToLms) merged.postedToLms = true
