@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { ConfigStore } from './config/configStore'
@@ -16,15 +16,19 @@ import { IPC } from '../shared/types'
 const AUTO_SEND_INTERVAL_MS = 60_000
 
 function createWindow(): BrowserWindow {
+  // Bỏ hẳn thanh menu mặc định của Electron (File/Edit/View/Window/Help).
+  Menu.setApplicationMenu(null)
   const win = new BrowserWindow({
     width: 1000,
     height: 720,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+  win.setMenuBarVisibility(false)
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
