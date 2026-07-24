@@ -1,0 +1,33 @@
+appId: com.mindx.autocomment
+productName: MindX Auto Comment
+directories:
+  output: release
+  buildResources: build
+
+# Không dùng asar: tránh Windows Defender khóa file app.asar khi đóng gói,
+# và Playwright (spawn tiến trình driver riêng) chạy ổn định hơn khi ở dạng file thường.
+asar: false
+
+# Nội dung được đóng gói (electron-vite build ra thư mục out/)
+files:
+  - out/**
+  - package.json
+
+# Script điều khiển Zalo PC (code đọc qua process.resourcesPath khi đã đóng gói).
+extraResources:
+  - from: resources/zalo-desktop-uia.ps1
+    to: zalo-desktop-uia.ps1
+
+win:
+  target:
+    - target: portable   # 1 file .exe chạy luôn, không cần cài
+    - target: nsis        # bản cài đặt có shortcut (tùy chọn)
+  # icon: build/icon.ico   # bỏ comment nếu có icon riêng
+
+portable:
+  artifactName: MindX-Auto-Comment-${version}-portable.${ext}
+
+nsis:
+  oneClick: true
+  perMachine: false
+  artifactName: MindX-Auto-Comment-${version}-setup.${ext}
