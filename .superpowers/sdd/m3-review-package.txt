@@ -1,0 +1,1150 @@
+=== COMMITS ===
+743397f feat: SessionComposer UI + compose entry + style-hint setting (M3 UI)
+9816059 feat: content model + ContentRepository + Gemini generate + preview builder + IPC (M3 backend)
+
+=== STAT ===
+ src/main/content/ContentRepository.test.ts      |  35 ++++++
+ src/main/content/ContentRepository.ts           |  16 +++
+ src/main/gemini/geminiClient.ts                 |  59 +++++++++
+ src/main/gemini/geminiGenerate.test.ts          |  46 +++++++
+ src/main/index.ts                               |  44 ++++++-
+ src/main/ipcHandlers.test.ts                    |  42 ++++++-
+ src/main/ipcHandlers.ts                         |  10 +-
+ src/preload/index.ts                            |   4 +
+ src/renderer/src/pages/ClassEditor.test.tsx     |   4 +-
+ src/renderer/src/pages/ClassesPage.test.tsx     |  14 ++-
+ src/renderer/src/pages/ClassesPage.tsx          |  26 +++-
+ src/renderer/src/pages/SessionComposer.test.tsx |  94 ++++++++++++++
+ src/renderer/src/pages/SessionComposer.tsx      | 158 ++++++++++++++++++++++++
+ src/renderer/src/pages/SettingsPage.test.tsx    |   2 +-
+ src/renderer/src/pages/SettingsPage.tsx         |  13 ++
+ src/shared/types.ts                             |  28 +++++
+ src/shared/zaloTemplate.test.ts                 |  47 +++++++
+ src/shared/zaloTemplate.ts                      |  28 +++++
+ 18 files changed, 659 insertions(+), 11 deletions(-)
+
+=== DIFF U10 ===
+diff --git a/src/main/content/ContentRepository.test.ts b/src/main/content/ContentRepository.test.ts
+new file mode 100644
+index 0000000..a1d948f
+--- /dev/null
++++ b/src/main/content/ContentRepository.test.ts
+@@ -0,0 +1,35 @@
++import { describe, it, expect, beforeEach, afterEach } from 'vitest'
++import { promises as fs } from 'node:fs'
++import { join } from 'node:path'
++import { tmpdir } from 'node:os'
++import { LocalStorageProvider } from '../storage/LocalStorageProvider'
++import { ContentRepository } from './ContentRepository'
++import { SessionContent } from '../../shared/types'
++
++function makeContent(sessionId: string): SessionContent {
++  return { id: sessionId, classId: 'c1', sessionId, lessonContent: 'Bài 1', homework: '', comments: [] }
++}
++
++let dir: string
++let repo: ContentRepository
++beforeEach(async () => {
++  dir = await fs.mkdtemp(join(tmpdir(), 'content-'))
++  repo = new ContentRepository(new LocalStorageProvider(dir))
++})
++afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }) })
++
++describe('ContentRepository', () => {
++  it('get trả null khi chưa có', async () => {
++    expect(await repo.get('s1')).toBeNull()
++  })
++  it('save rồi get trả lại đúng nội dung', async () => {
++    const c = makeContent('s1')
++    await repo.save(c)
++    expect(await repo.get('s1')).toEqual(c)
++  })
++  it('save ghi đè theo sessionId', async () => {
++    await repo.save(makeContent('s1'))
++    await repo.save({ ...makeContent('s1'), homework: 'Làm bài 5' })
++    expect((await repo.get('s1'))?.homework).toBe('Làm bài 5')
++  })
++})
+diff --git a/src/main/content/ContentRepository.ts b/src/main/content/ContentRepository.ts
+new file mode 100644
+index 0000000..6677f03
+--- /dev/null
++++ b/src/main/content/ContentRepository.ts
+@@ -0,0 +1,16 @@
++import { StorageProvider } from '../storage/StorageProvider'
++import { SessionContent } from '../../shared/types'
++
++const COLLECTION = 'contents'
++
++export class ContentRepository {
++  constructor(private readonly storage: StorageProvider) {}
++
++  get(sessionId: string): Promise<SessionContent | null> {
++    return this.storage.read<SessionContent>(COLLECTION, sessionId)
++  }
++
++  save(content: SessionContent): Promise<void> {
++    return this.storage.write(COLLECTION, content.sessionId, content)
++  }
++}
+diff --git a/src/main/gemini/geminiClient.ts b/src/main/gemini/geminiClient.ts
+index 8a74c95..53e67b4 100644
+--- a/src/main/gemini/geminiClient.ts
++++ b/src/main/gemini/geminiClient.ts
+@@ -1,13 +1,72 @@
+ import { GeminiValidationResult } from '../../shared/types'
+ 
+ const MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
++const GEMINI_MODEL = 'gemini-2.0-flash'
++const GENERATE_ENDPOINT = `${MODELS_ENDPOINT}/${GEMINI_MODEL}:generateContent`
++
++export interface GeminiPart {
++  text?: string
++  inline_data?: { mime_type: string; data: string }
++}
++
++async function callGemini(
++  apiKey: string,
++  parts: GeminiPart[],
++  fetchFn: typeof fetch = fetch,
++): Promise<string> {
++  const res = await fetchFn(`${GENERATE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ contents: [{ parts }] }),
++  })
++  if (!res.ok) {
++    throw new Error(`Gemini lỗi HTTP ${res.status}.`)
++  }
++  const data = (await res.json()) as {
++    candidates?: { content?: { parts?: { text?: string }[] } }[]
++  }
++  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
++  if (typeof text !== 'string') {
++    throw new Error('Gemini không trả về nội dung.')
++  }
++  return text.trim()
++}
++
++export function extractLessonContent(
++  apiKey: string,
++  pdfBase64: string,
++  fetchFn: typeof fetch = fetch,
++): Promise<string> {
++  const prompt =
++    'Đây là tài liệu PDF của một buổi học. Hãy trích đúng phần NỘI DUNG CHÍNH của buổi học, ' +
++    'giữ nguyên ý, trình bày gọn theo gạch đầu dòng bằng tiếng Việt. Chỉ trả về nội dung bài học, không thêm lời dẫn.'
++  return callGemini(
++    apiKey,
++    [{ text: prompt }, { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } }],
++    fetchFn,
++  )
++}
++
++export function rewriteComment(
++  apiKey: string,
++  studentName: string,
++  raw: string,
++  styleHint: string,
++  fetchFn: typeof fetch = fetch,
++): Promise<string> {
++  const prompt =
++    `Viết lại nhận xét sau cho học sinh "${studentName}" theo văn phong: ${styleHint}. ` +
++    'Giữ đúng ý gốc, không thêm thông tin bịa, độ dài khoảng 1-2 câu. Chỉ trả về câu nhận xét đã viết lại.\n' +
++    `Nhận xét gốc: "${raw}"`
++  return callGemini(apiKey, [{ text: prompt }], fetchFn)
++}
+ 
+ export async function validateGeminiApiKey(
+   apiKey: string,
+   fetchFn: typeof fetch = fetch,
+ ): Promise<GeminiValidationResult> {
+   if (!apiKey || apiKey.trim() === '') {
+     return { valid: false, error: 'API key đang trống.' }
+   }
+   try {
+     const res = await fetchFn(`${MODELS_ENDPOINT}?key=${encodeURIComponent(apiKey)}`)
+diff --git a/src/main/gemini/geminiGenerate.test.ts b/src/main/gemini/geminiGenerate.test.ts
+new file mode 100644
+index 0000000..8c08e52
+--- /dev/null
++++ b/src/main/gemini/geminiGenerate.test.ts
+@@ -0,0 +1,46 @@
++import { describe, it, expect, vi } from 'vitest'
++import { extractLessonContent, rewriteComment } from './geminiClient'
++
++function jsonFetch(body: unknown, status = 200): typeof fetch {
++  return vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })) as unknown as typeof fetch
++}
++function okReply(text: string) {
++  return { candidates: [{ content: { parts: [{ text }] } }] }
++}
++
++describe('extractLessonContent', () => {
++  it('trả text đã trim khi Gemini phản hồi hợp lệ', async () => {
++    const out = await extractLessonContent('k', 'BASE64PDF', jsonFetch(okReply('  Nội dung bài 1  ')))
++    expect(out).toBe('Nội dung bài 1')
++  })
++  it('gửi inline_data PDF trong request body', async () => {
++    const fetchFn = jsonFetch(okReply('x'))
++    await extractLessonContent('k', 'BASE64PDF', fetchFn)
++    const call = (fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
++    const body = JSON.parse(call[1].body as string)
++    const parts = body.contents[0].parts
++    expect(parts.some((p: { inline_data?: { data: string } }) => p.inline_data?.data === 'BASE64PDF')).toBe(true)
++  })
++  it('ném lỗi khi HTTP !ok', async () => {
++    await expect(extractLessonContent('k', 'x', jsonFetch({}, 500))).rejects.toThrow(/HTTP 500/)
++  })
++  it('ném lỗi khi thiếu candidates', async () => {
++    await expect(extractLessonContent('k', 'x', jsonFetch({}))).rejects.toThrow(/không trả về/i)
++  })
++})
++
++describe('rewriteComment', () => {
++  it('trả nhận xét đã viết lại', async () => {
++    const out = await rewriteComment('k', 'An', 'ngoan', 'nhẹ nhàng', jsonFetch(okReply('Em An ngoan, tích cực.')))
++    expect(out).toBe('Em An ngoan, tích cực.')
++  })
++  it('prompt chứa tên học sinh, nhận xét thô và văn phong', async () => {
++    const fetchFn = jsonFetch(okReply('x'))
++    await rewriteComment('k', 'An', 'ngoan', 'nghiêm túc', fetchFn)
++    const body = JSON.parse((fetchFn as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string)
++    const prompt = body.contents[0].parts[0].text as string
++    expect(prompt).toContain('An')
++    expect(prompt).toContain('ngoan')
++    expect(prompt).toContain('nghiêm túc')
++  })
++})
+diff --git a/src/main/index.ts b/src/main/index.ts
+index 7672378..e14b873 100644
+--- a/src/main/index.ts
++++ b/src/main/index.ts
+@@ -1,17 +1,19 @@
+ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
++import { promises as fs } from 'node:fs'
+ import { join } from 'node:path'
+ import { ConfigStore } from './config/configStore'
+-import { validateGeminiApiKey } from './gemini/geminiClient'
++import { validateGeminiApiKey, extractLessonContent, rewriteComment } from './gemini/geminiClient'
+ import { createIpcHandlers } from './ipcHandlers'
+ import { createStorageProvider } from './storage'
+ import { ClassRepository } from './classes/ClassRepository'
++import { ContentRepository } from './content/ContentRepository'
+ import { IPC } from '../shared/types'
+ 
+ function createWindow(): BrowserWindow {
+   const win = new BrowserWindow({
+     width: 1000,
+     height: 720,
+     webPreferences: {
+       preload: join(__dirname, '../preload/index.js'),
+       contextIsolation: true,
+       nodeIntegration: false,
+@@ -28,30 +30,68 @@ function createWindow(): BrowserWindow {
+ function registerIpc(): void {
+   const configStore = new ConfigStore(app.getPath('userData'))
+   const pickFolder = async (): Promise<string | null> => {
+     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+   }
+   const getRepository = async (): Promise<ClassRepository> => {
+     const cfg = await configStore.load()
+     return new ClassRepository(createStorageProvider(cfg))
+   }
+-  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder, getRepository })
++  const getContentRepository = async (): Promise<ContentRepository> => {
++    const cfg = await configStore.load()
++    return new ContentRepository(createStorageProvider(cfg))
++  }
++  const requireApiKey = async (): Promise<string> => {
++    const cfg = await configStore.load()
++    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
++    return cfg.geminiApiKey
++  }
++  const extractPdf = async (): Promise<string> => {
++    const apiKey = await requireApiKey()
++    const result = await dialog.showOpenDialog({
++      properties: ['openFile'],
++      filters: [{ name: 'PDF', extensions: ['pdf'] }],
++    })
++    if (result.canceled || result.filePaths.length === 0) {
++      throw new Error('Chưa chọn file PDF.')
++    }
++    const bytes = await fs.readFile(result.filePaths[0])
++    return extractLessonContent(apiKey, bytes.toString('base64'))
++  }
++  const rewrite = async (studentName: string, raw: string): Promise<string> => {
++    const cfg = await configStore.load()
++    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
++    return rewriteComment(cfg.geminiApiKey, studentName, raw, cfg.commentStyleHint)
++  }
++  const handlers = createIpcHandlers({
++    configStore,
++    validateGeminiKey: validateGeminiApiKey,
++    pickFolder,
++    getRepository,
++    getContentRepository,
++    extractPdf,
++    rewrite,
++  })
+ 
+   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
+   ipcMain.handle(IPC.updateConfig, (_e, patch) => handlers.updateConfig(patch))
+   ipcMain.handle(IPC.validateGeminiKey, (_e, apiKey: string) => handlers.validateGeminiKey(apiKey))
+   ipcMain.handle(IPC.pickFolder, () => handlers.pickFolder())
+   ipcMain.handle(IPC.listClasses, () => handlers.listClasses())
+   ipcMain.handle(IPC.getClass, (_e, id: string) => handlers.getClass(id))
+   ipcMain.handle(IPC.saveClass, (_e, cls) => handlers.saveClass(cls))
+   ipcMain.handle(IPC.deleteClass, (_e, id: string) => handlers.deleteClass(id))
++  ipcMain.handle(IPC.getContent, (_e, sessionId: string) => handlers.getContent(sessionId))
++  ipcMain.handle(IPC.saveContent, (_e, content) => handlers.saveContent(content))
++  ipcMain.handle(IPC.extractLessonFromPdf, () => handlers.extractLessonFromPdf())
++  ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
+ }
+ 
+ app.whenReady().then(() => {
+   registerIpc()
+   createWindow()
+   app.on('activate', () => {
+     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+   })
+ })
+ 
+diff --git a/src/main/ipcHandlers.test.ts b/src/main/ipcHandlers.test.ts
+index 53a8db7..6afe013 100644
+--- a/src/main/ipcHandlers.test.ts
++++ b/src/main/ipcHandlers.test.ts
+@@ -1,13 +1,13 @@
+ import { describe, it, expect, vi } from 'vitest'
+ import { createIpcHandlers } from './ipcHandlers'
+-import { DEFAULT_CONFIG, SchoolClass } from '../shared/types'
++import { DEFAULT_CONFIG, SchoolClass, SessionContent } from '../shared/types'
+ 
+ function makeDeps() {
+   const configStore = {
+     load: vi.fn(async () => DEFAULT_CONFIG),
+     save: vi.fn(async () => {}),
+     update: vi.fn(async (patch) => ({ ...DEFAULT_CONFIG, ...patch })),
+   }
+   const validateGeminiKey = vi.fn(async () => ({ valid: true }))
+   const pickFolder = vi.fn(async () => '/chosen')
+   return { configStore, validateGeminiKey, pickFolder }
+@@ -79,10 +79,50 @@ describe('createIpcHandlers — class methods', () => {
+     await api.saveClass(c)
+     expect(repo.save).toHaveBeenCalledWith(c)
+   })
+   it('deleteClass ủy quyền cho repo.delete', async () => {
+     const { base, repo } = makeClassDeps()
+     const api = createIpcHandlers(base as never)
+     await api.deleteClass('c1')
+     expect(repo.delete).toHaveBeenCalledWith('c1')
+   })
+ })
++
++describe('createIpcHandlers — content & gemini', () => {
++  function makeDeps() {
++    const contentRepo = { get: vi.fn(async () => null), save: vi.fn(async () => {}) }
++    const base = {
++      configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
++      validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
++      getRepository: vi.fn(),
++      getContentRepository: vi.fn(async () => contentRepo),
++      extractPdf: vi.fn(async () => 'Nội dung PDF'),
++      rewrite: vi.fn(async () => 'Nhận xét đã sửa'),
++    }
++    return { base, contentRepo }
++  }
++
++  it('getContent ủy quyền cho contentRepo.get', async () => {
++    const { base, contentRepo } = makeDeps()
++    const api = createIpcHandlers(base as never)
++    await api.getContent('s1')
++    expect(contentRepo.get).toHaveBeenCalledWith('s1')
++  })
++  it('saveContent ủy quyền cho contentRepo.save', async () => {
++    const { base, contentRepo } = makeDeps()
++    const api = createIpcHandlers(base as never)
++    const c: SessionContent = { id: 's1', classId: 'c1', sessionId: 's1', lessonContent: '', homework: '', comments: [] }
++    await api.saveContent(c)
++    expect(contentRepo.save).toHaveBeenCalledWith(c)
++  })
++  it('extractLessonFromPdf ủy quyền cho extractPdf', async () => {
++    const { base } = makeDeps()
++    const api = createIpcHandlers(base as never)
++    expect(await api.extractLessonFromPdf()).toBe('Nội dung PDF')
++  })
++  it('rewriteComment ủy quyền cho rewrite với đúng tham số', async () => {
++    const { base } = makeDeps()
++    const api = createIpcHandlers(base as never)
++    expect(await api.rewriteComment('An', 'ngoan')).toBe('Nhận xét đã sửa')
++    expect(base.rewrite).toHaveBeenCalledWith('An', 'ngoan')
++  })
++})
+diff --git a/src/main/ipcHandlers.ts b/src/main/ipcHandlers.ts
+index 29790b2..d964393 100644
+--- a/src/main/ipcHandlers.ts
++++ b/src/main/ipcHandlers.ts
+@@ -1,23 +1,31 @@
+-import { AppApi, AppConfig, GeminiValidationResult, SchoolClass } from '../shared/types'
++import { AppApi, AppConfig, GeminiValidationResult, SchoolClass, SessionContent } from '../shared/types'
+ import { ConfigStore } from './config/configStore'
+ import { ClassRepository } from './classes/ClassRepository'
++import { ContentRepository } from './content/ContentRepository'
+ 
+ export interface IpcDeps {
+   configStore: ConfigStore
+   validateGeminiKey: (apiKey: string) => Promise<GeminiValidationResult>
+   pickFolder: () => Promise<string | null>
+   getRepository: () => Promise<ClassRepository>
++  getContentRepository: () => Promise<ContentRepository>
++  extractPdf: () => Promise<string>
++  rewrite: (studentName: string, raw: string) => Promise<string>
+ }
+ 
+ export function createIpcHandlers(deps: IpcDeps): AppApi {
+   return {
+     getConfig: () => deps.configStore.load(),
+     updateConfig: (patch: Partial<AppConfig>) => deps.configStore.update(patch),
+     validateGeminiKey: (apiKey: string) => deps.validateGeminiKey(apiKey),
+     pickFolder: () => deps.pickFolder(),
+     listClasses: async () => (await deps.getRepository()).list(),
+     getClass: async (id: string) => (await deps.getRepository()).get(id),
+     saveClass: async (cls: SchoolClass) => (await deps.getRepository()).save(cls),
+     deleteClass: async (id: string) => (await deps.getRepository()).delete(id),
++    getContent: async (sessionId: string) => (await deps.getContentRepository()).get(sessionId),
++    saveContent: async (content: SessionContent) => (await deps.getContentRepository()).save(content),
++    extractLessonFromPdf: () => deps.extractPdf(),
++    rewriteComment: (studentName: string, raw: string) => deps.rewrite(studentName, raw),
+   }
+ }
+diff --git a/src/preload/index.ts b/src/preload/index.ts
+index 48f7792..3de5021 100644
+--- a/src/preload/index.ts
++++ b/src/preload/index.ts
+@@ -3,13 +3,17 @@ import { AppApi, IPC } from '../shared/types'
+ 
+ const api: AppApi = {
+   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
+   updateConfig: (patch) => ipcRenderer.invoke(IPC.updateConfig, patch),
+   validateGeminiKey: (apiKey) => ipcRenderer.invoke(IPC.validateGeminiKey, apiKey),
+   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
+   listClasses: () => ipcRenderer.invoke(IPC.listClasses),
+   getClass: (id) => ipcRenderer.invoke(IPC.getClass, id),
+   saveClass: (cls) => ipcRenderer.invoke(IPC.saveClass, cls),
+   deleteClass: (id) => ipcRenderer.invoke(IPC.deleteClass, id),
++  getContent: (sessionId) => ipcRenderer.invoke(IPC.getContent, sessionId),
++  saveContent: (content) => ipcRenderer.invoke(IPC.saveContent, content),
++  extractLessonFromPdf: () => ipcRenderer.invoke(IPC.extractLessonFromPdf),
++  rewriteComment: (studentName, raw) => ipcRenderer.invoke(IPC.rewriteComment, studentName, raw),
+ }
+ 
+ contextBridge.exposeInMainWorld('api', api)
+diff --git a/src/renderer/src/pages/ClassEditor.test.tsx b/src/renderer/src/pages/ClassEditor.test.tsx
+index df1ad45..a74bfd2 100644
+--- a/src/renderer/src/pages/ClassEditor.test.tsx
++++ b/src/renderer/src/pages/ClassEditor.test.tsx
+@@ -2,21 +2,21 @@
+ import { describe, it, expect, vi, beforeEach } from 'vitest'
+ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+ import ClassEditor from './ClassEditor'
+ import { SchoolClass } from '../../../shared/types'
+ 
+ function stub() {
+   const api = {
+     getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
+     listClasses: vi.fn(), getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(),
+   }
+-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
+   return api
+ }
+ beforeEach(() => stub())
+ 
+ const base: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [{ id: 's1', name: 'An' }], sessions: [] }
+ 
+ describe('ClassEditor', () => {
+   it('hiển thị mã/tên/học sinh hiện có', () => {
+     render(<ClassEditor cls={base} onDone={() => {}} />)
+     expect(screen.getByLabelText(/mã lớp/i)).toHaveValue('A1')
+@@ -44,18 +44,18 @@ describe('ClassEditor', () => {
+   })
+   it('"Quay lại" gọi onDone', () => {
+     const onDone = vi.fn()
+     render(<ClassEditor cls={base} onDone={onDone} />)
+     fireEvent.click(screen.getByText(/quay lại/i))
+     expect(onDone).toHaveBeenCalled()
+   })
+   it('Lưu thất bại hiển thị lỗi và KHÔNG gọi onDone', async () => {
+     const api = stub()
+     api.saveClass = vi.fn(async () => { throw new Error('Chưa chọn thư mục') })
+-    ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++    ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
+     const onDone = vi.fn()
+     render(<ClassEditor cls={base} onDone={onDone} />)
+     fireEvent.click(screen.getByText(/^lưu$/i))
+     await waitFor(() => expect(screen.getByText(/lưu thất bại/i)).toBeInTheDocument())
+     expect(onDone).not.toHaveBeenCalled()
+   })
+ })
+diff --git a/src/renderer/src/pages/ClassesPage.test.tsx b/src/renderer/src/pages/ClassesPage.test.tsx
+index 4c9cc63..5e24e00 100644
+--- a/src/renderer/src/pages/ClassesPage.test.tsx
++++ b/src/renderer/src/pages/ClassesPage.test.tsx
+@@ -4,26 +4,30 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+ import ClassesPage from './ClassesPage'
+ import { SchoolClass } from '../../../shared/types'
+ 
+ function stub(overrides: Partial<Window['api']> = {}) {
+   const api = {
+     getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
+     listClasses: vi.fn(async () => [] as SchoolClass[]),
+     getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(async () => {}),
+     ...overrides,
+   }
+-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
+   return api
+ }
+ beforeEach(() => stub())
+ 
+ const c1: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [{ id: 's1', name: 'An' }], sessions: [] }
++const cWithSession: SchoolClass = {
++  id: 'c2', code: 'B2', name: 'Lớp B2', students: [{ id: 's2', name: 'Bình' }],
++  sessions: [{ id: 'ss1', dateTime: '2026-07-20T18:00:00' }],
++}
+ 
+ describe('ClassesPage', () => {
+   it('hiển thị "chưa có lớp" khi danh sách rỗng', async () => {
+     render(<ClassesPage />)
+     await waitFor(() => expect(screen.getByText(/chưa có lớp/i)).toBeInTheDocument())
+   })
+   it('liệt kê lớp đã có (mã + tên + số HS)', async () => {
+     stub({ listClasses: vi.fn(async () => [c1]) })
+     render(<ClassesPage />)
+     await waitFor(() => expect(screen.getByText('A1')).toBeInTheDocument())
+@@ -37,16 +41,24 @@ describe('ClassesPage', () => {
+     await waitFor(() => expect(screen.getByLabelText(/mã lớp/i)).toBeInTheDocument())
+   })
+   it('bấm "Xóa" gọi deleteClass rồi tải lại', async () => {
+     const api = stub({ listClasses: vi.fn(async () => [c1]) })
+     render(<ClassesPage />)
+     await waitFor(() => screen.getByText('A1'))
+     fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
+     await waitFor(() => expect(api.deleteClass).toHaveBeenCalledWith('c1'))
+     expect(api.listClasses).toHaveBeenCalledTimes(2)
+   })
++  it('lớp có buổi hiện nút "Soạn nội dung", bấm mở trình soạn', async () => {
++    stub({ listClasses: vi.fn(async () => [cWithSession]), getContent: vi.fn(async () => null), getConfig: vi.fn(async () => (await import('../../../shared/types')).DEFAULT_CONFIG) })
++    render(<ClassesPage />)
++    await waitFor(() => screen.getByText('B2'))
++    fireEvent.click(screen.getByLabelText(/soạn nội dung B2/i))
++    await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toBeInTheDocument())
++  })
++
+   it('báo lỗi khi listClasses thất bại (chưa cấu hình thư mục)', async () => {
+     stub({ listClasses: vi.fn(async () => { throw new Error('Chưa chọn thư mục') }) })
+     render(<ClassesPage />)
+     await waitFor(() => expect(screen.getByText(/chưa chọn thư mục/i)).toBeInTheDocument())
+   })
+ })
+diff --git a/src/renderer/src/pages/ClassesPage.tsx b/src/renderer/src/pages/ClassesPage.tsx
+index 320168f..d0295dd 100644
+--- a/src/renderer/src/pages/ClassesPage.tsx
++++ b/src/renderer/src/pages/ClassesPage.tsx
+@@ -1,46 +1,53 @@
+ import { useEffect, useState } from 'react'
+-import { SchoolClass } from '../../../shared/types'
++import { SchoolClass, ClassSession } from '../../../shared/types'
+ import { newId } from '../../../shared/id'
++import { formatSessionDate } from '../../../shared/zaloTemplate'
+ import ClassEditor from './ClassEditor'
++import SessionComposer from './SessionComposer'
+ 
+ function emptyClass(): SchoolClass {
+   return { id: newId(), code: '', name: '', students: [], sessions: [] }
+ }
+ 
+ export default function ClassesPage(): JSX.Element {
+   const [classes, setClasses] = useState<SchoolClass[]>([])
+   const [error, setError] = useState<string | null>(null)
+   const [editing, setEditing] = useState<SchoolClass | null>(null)
++  const [composing, setComposing] = useState<{ cls: SchoolClass; session: ClassSession } | null>(null)
+ 
+   const reload = async (): Promise<void> => {
+     try {
+       setClasses(await window.api.listClasses())
+       setError(null)
+     } catch (err) {
+       setError((err as Error).message)
+     }
+   }
+ 
+   useEffect(() => {
+-    if (!editing) void reload()
+-  }, [editing])
++    if (!editing && !composing) void reload()
++  }, [editing, composing])
+ 
+   const remove = async (id: string): Promise<void> => {
+     try {
+       await window.api.deleteClass(id)
+       await reload()
+     } catch (err) {
+       setError((err as Error).message)
+     }
+   }
+ 
++  if (composing) {
++    return <SessionComposer cls={composing.cls} session={composing.session} onDone={() => setComposing(null)} />
++  }
++
+   if (editing) {
+     return <ClassEditor cls={editing} onDone={() => setEditing(null)} />
+   }
+ 
+   return (
+     <div style={{ padding: 24, maxWidth: 720, fontFamily: 'system-ui' }}>
+       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+         <h1>Lớp học</h1>
+         <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
+       </div>
+@@ -61,16 +68,29 @@ export default function ClassesPage(): JSX.Element {
+                 <strong>{c.code}</strong> — {c.name}
+                 <div style={{ color: '#666', fontSize: 13 }}>
+                   {c.students.length} học sinh · {c.sessions.length} buổi
+                 </div>
+               </div>
+               <div>
+                 <button onClick={() => setEditing(c)}>Sửa</button>{' '}
+                 <button aria-label={`Xóa lớp ${c.code}`} onClick={() => remove(c.id)}>Xóa</button>
+               </div>
+             </div>
++            {c.sessions.length > 0 && (
++              <div style={{ marginTop: 8 }}>
++                <div style={{ fontSize: 13, color: '#666' }}>Soạn nội dung theo buổi:</div>
++                {c.sessions.map(ss => (
++                  <div key={ss.id} style={{ marginTop: 4 }}>
++                    <span style={{ fontSize: 13 }}>{formatSessionDate(ss.dateTime) || 'Buổi chưa đặt giờ'}</span>{' '}
++                    <button aria-label={`Soạn nội dung ${c.code} ${ss.dateTime}`} onClick={() => setComposing({ cls: c, session: ss })}>
++                      Soạn nội dung
++                    </button>
++                  </div>
++                ))}
++              </div>
++            )}
+           </li>
+         ))}
+       </ul>
+     </div>
+   )
+ }
+diff --git a/src/renderer/src/pages/SessionComposer.test.tsx b/src/renderer/src/pages/SessionComposer.test.tsx
+new file mode 100644
+index 0000000..fffb9dd
+--- /dev/null
++++ b/src/renderer/src/pages/SessionComposer.test.tsx
+@@ -0,0 +1,94 @@
++// @vitest-environment jsdom
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, waitFor, fireEvent } from '@testing-library/react'
++import SessionComposer from './SessionComposer'
++import { SchoolClass, ClassSession, DEFAULT_CONFIG } from '../../../shared/types'
++
++function stub(overrides: Partial<Window['api']> = {}) {
++  const api = {
++    getConfig: vi.fn(async () => DEFAULT_CONFIG),
++    updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
++    listClasses: vi.fn(), getClass: vi.fn(), saveClass: vi.fn(), deleteClass: vi.fn(),
++    getContent: vi.fn(async () => null),
++    saveContent: vi.fn(async () => {}),
++    extractLessonFromPdf: vi.fn(async () => 'Bài học từ PDF'),
++    rewriteComment: vi.fn(async () => 'Em An ngoan, tích cực.'),
++    ...overrides,
++  }
++  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
++  return api
++}
++beforeEach(() => stub())
++
++const cls: SchoolClass = {
++  id: 'c1', code: 'A1', name: 'Lớp A1',
++  students: [{ id: 's1', name: 'An' }],
++  sessions: [],
++}
++const session: ClassSession = { id: 'ss1', dateTime: '2026-07-20T18:00:00' }
++
++describe('SessionComposer', () => {
++  it('hiển thị học sinh trong lớp', async () => {
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => expect(screen.getByText('An')).toBeInTheDocument())
++    expect(screen.getByLabelText(/nhận xét thô An/i)).toBeInTheDocument()
++  })
++
++  it('tải nội dung đã lưu nếu có', async () => {
++    stub({ getContent: vi.fn(async () => ({
++      id: 'ss1', classId: 'c1', sessionId: 'ss1', lessonContent: 'Đã lưu', homework: 'BT', comments: [],
++    })) })
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Đã lưu'))
++  })
++
++  it('"Nạp PDF & trích" điền nội dung bài học', async () => {
++    const api = stub()
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => screen.getByText(/nạp pdf/i))
++    fireEvent.click(screen.getByText(/nạp pdf/i))
++    await waitFor(() => expect(screen.getByLabelText(/nội dung bài học/i)).toHaveValue('Bài học từ PDF'))
++    expect(api.extractLessonFromPdf).toHaveBeenCalled()
++  })
++
++  it('"AI sửa" điền nhận xét đã sửa', async () => {
++    const api = stub()
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
++    fireEvent.change(screen.getByLabelText(/nhận xét thô An/i), { target: { value: 'ngoan' } })
++    fireEvent.click(screen.getByLabelText(/AI sửa An/i))
++    await waitFor(() => expect(screen.getByLabelText(/nhận xét đã sửa An/i)).toHaveValue('Em An ngoan, tích cực.'))
++    expect(api.rewriteComment).toHaveBeenCalledWith('An', 'ngoan')
++  })
++
++  it('"Xem trước" dựng tin Zalo có tên lớp, bài học, nhận xét, bài tập', async () => {
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => screen.getByLabelText(/nhận xét thô An/i))
++    fireEvent.change(screen.getByLabelText(/nội dung bài học/i), { target: { value: 'Phép cộng' } })
++    fireEvent.change(screen.getByLabelText(/nhận xét thô An/i), { target: { value: 'ngoan' } })
++    fireEvent.change(screen.getByLabelText(/bài tập về nhà/i), { target: { value: 'Làm bài 5' } })
++    fireEvent.click(screen.getByText(/xem trước/i))
++    const pre = await screen.findByLabelText(/xem trước zalo/i)
++    expect(pre.textContent).toContain('lớp Lớp A1 ngày 20/07/2026 18:00')
++    expect(pre.textContent).toContain('Phép cộng')
++    expect(pre.textContent).toContain('An: ngoan')
++    expect(pre.textContent).toContain('Làm bài 5')
++  })
++
++  it('"Lưu" gọi saveContent', async () => {
++    const api = stub()
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => screen.getByText(/^lưu$/i))
++    fireEvent.click(screen.getByText(/^lưu$/i))
++    await waitFor(() => expect(api.saveContent).toHaveBeenCalled())
++    expect(screen.getByText(/đã lưu/i)).toBeInTheDocument()
++  })
++
++  it('AI sửa thất bại hiển thị lỗi', async () => {
++    stub({ rewriteComment: vi.fn(async () => { throw new Error('Chưa cấu hình API key Gemini') }) })
++    render(<SessionComposer cls={cls} session={session} onDone={() => {}} />)
++    await waitFor(() => screen.getByLabelText(/AI sửa An/i))
++    fireEvent.click(screen.getByLabelText(/AI sửa An/i))
++    await waitFor(() => expect(screen.getByText(/chưa cấu hình api key/i)).toBeInTheDocument())
++  })
++})
+diff --git a/src/renderer/src/pages/SessionComposer.tsx b/src/renderer/src/pages/SessionComposer.tsx
+new file mode 100644
+index 0000000..f02e67c
+--- /dev/null
++++ b/src/renderer/src/pages/SessionComposer.tsx
+@@ -0,0 +1,158 @@
++import { useEffect, useState } from 'react'
++import { SchoolClass, ClassSession, SessionContent, StudentComment, AppConfig, DEFAULT_CONFIG } from '../../../shared/types'
++import { fillTemplate, formatCommentLines, formatSessionDate } from '../../../shared/zaloTemplate'
++
++function emptyContent(cls: SchoolClass, session: ClassSession): SessionContent {
++  return {
++    id: session.id,
++    classId: cls.id,
++    sessionId: session.id,
++    lessonContent: '',
++    homework: '',
++    comments: cls.students.map(s => ({ studentId: s.id, raw: '', polished: '' })),
++  }
++}
++
++export default function SessionComposer(
++  { cls, session, onDone }: { cls: SchoolClass; session: ClassSession; onDone: () => void },
++): JSX.Element {
++  const [content, setContent] = useState<SessionContent>(() => emptyContent(cls, session))
++  const [config, setConfig] = useState<AppConfig>(DEFAULT_CONFIG)
++  const [preview, setPreview] = useState<string | null>(null)
++  const [error, setError] = useState<string | null>(null)
++  const [saved, setSaved] = useState(false)
++
++  useEffect(() => {
++    void window.api.getConfig().then(setConfig)
++    void window.api.getContent(session.id).then(existing => {
++      if (existing) setContent(existing)
++    })
++  }, [session.id])
++
++  const commentFor = (studentId: string): StudentComment =>
++    content.comments.find(c => c.studentId === studentId) ?? { studentId, raw: '', polished: '' }
++
++  const setComment = (studentId: string, patch: Partial<StudentComment>): void =>
++    setContent(prev => {
++      const exists = prev.comments.some(c => c.studentId === studentId)
++      const comments = exists
++        ? prev.comments.map(c => (c.studentId === studentId ? { ...c, ...patch } : c))
++        : [...prev.comments, { studentId, raw: '', polished: '', ...patch }]
++      return { ...prev, comments }
++    })
++
++  const loadPdf = async (): Promise<void> => {
++    try {
++      const text = await window.api.extractLessonFromPdf()
++      setContent(prev => ({ ...prev, lessonContent: text }))
++      setError(null)
++    } catch (err) {
++      setError((err as Error).message)
++    }
++  }
++
++  const aiRewrite = async (studentId: string, name: string): Promise<void> => {
++    try {
++      const polished = await window.api.rewriteComment(name, commentFor(studentId).raw)
++      setComment(studentId, { polished })
++      setError(null)
++    } catch (err) {
++      setError((err as Error).message)
++    }
++  }
++
++  const showPreview = (): void => {
++    const text = fillTemplate(config.zaloMessageTemplate, {
++      ten_lop: cls.name || cls.code,
++      ngay_buoi_hoc: formatSessionDate(session.dateTime),
++      noi_dung_bai_hoc: content.lessonContent,
++      danh_sach_nhan_xet: formatCommentLines(
++        cls.students.map(s => ({ name: s.name, text: commentFor(s.id).polished || commentFor(s.id).raw })),
++      ),
++      bai_tap_ve_nha: content.homework,
++    })
++    setPreview(text)
++  }
++
++  const save = async (): Promise<void> => {
++    try {
++      await window.api.saveContent(content)
++      setSaved(true)
++      setError(null)
++    } catch (err) {
++      setError((err as Error).message)
++    }
++  }
++
++  return (
++    <div style={{ padding: 24, maxWidth: 760, fontFamily: 'system-ui' }}>
++      <button onClick={onDone}>← Quay lại</button>
++      <h2>Soạn nội dung — {cls.code} · {formatSessionDate(session.dateTime) || 'buổi học'}</h2>
++      {error && <p style={{ color: 'crimson' }}>{error}</p>}
++
++      <section style={{ marginBottom: 20 }}>
++        <label htmlFor="lesson">Nội dung bài học</label><br />
++        <textarea
++          id="lesson"
++          rows={6}
++          style={{ width: '100%' }}
++          value={content.lessonContent}
++          onChange={e => setContent(prev => ({ ...prev, lessonContent: e.target.value }))}
++        />
++        <div><button onClick={loadPdf}>Nạp PDF &amp; trích</button></div>
++      </section>
++
++      <section style={{ marginBottom: 20 }}>
++        <h3>Nhận xét học sinh</h3>
++        {cls.students.length === 0 && <p>Lớp chưa có học sinh.</p>}
++        {cls.students.map(s => {
++          const cm = commentFor(s.id)
++          return (
++            <div key={s.id} style={{ borderBottom: '1px solid #eee', paddingBottom: 8, marginBottom: 8 }}>
++              <strong>{s.name}</strong>
++              <textarea
++                aria-label={`Nhận xét thô ${s.name}`}
++                rows={2}
++                style={{ width: '100%' }}
++                value={cm.raw}
++                onChange={e => setComment(s.id, { raw: e.target.value })}
++              />
++              <button aria-label={`AI sửa ${s.name}`} onClick={() => aiRewrite(s.id, s.name)}>AI sửa</button>
++              <textarea
++                aria-label={`Nhận xét đã sửa ${s.name}`}
++                rows={2}
++                style={{ width: '100%' }}
++                value={cm.polished}
++                onChange={e => setComment(s.id, { polished: e.target.value })}
++              />
++            </div>
++          )
++        })}
++      </section>
++
++      <section style={{ marginBottom: 20 }}>
++        <label htmlFor="homework">Bài tập về nhà</label><br />
++        <textarea
++          id="homework"
++          rows={3}
++          style={{ width: '100%' }}
++          value={content.homework}
++          onChange={e => setContent(prev => ({ ...prev, homework: e.target.value }))}
++        />
++      </section>
++
++      <button onClick={showPreview}>Xem trước</button>{' '}
++      <button onClick={save}>Lưu</button>
++      {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
++
++      {preview !== null && (
++        <section style={{ marginTop: 20 }}>
++          <h3>Xem trước tin nhắn Zalo</h3>
++          <pre aria-label="Xem trước Zalo" style={{ whiteSpace: 'pre-wrap', background: '#f6f6f6', padding: 12 }}>
++            {preview}
++          </pre>
++        </section>
++      )}
++    </div>
++  )
++}
+diff --git a/src/renderer/src/pages/SettingsPage.test.tsx b/src/renderer/src/pages/SettingsPage.test.tsx
+index 04e0ef6..b80b4ee 100644
+--- a/src/renderer/src/pages/SettingsPage.test.tsx
++++ b/src/renderer/src/pages/SettingsPage.test.tsx
+@@ -5,21 +5,21 @@ import SettingsPage from './SettingsPage'
+ import { DEFAULT_CONFIG } from '../../../shared/types'
+ 
+ function stubApi(overrides: Partial<Window['api']> = {}) {
+   const api = {
+     getConfig: vi.fn(async () => DEFAULT_CONFIG),
+     updateConfig: vi.fn(async (patch) => ({ ...DEFAULT_CONFIG, ...patch })),
+     validateGeminiKey: vi.fn(async () => ({ valid: true })),
+     pickFolder: vi.fn(async () => '/data/mindx'),
+     ...overrides,
+   }
+-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
+   return api
+ }
+ 
+ beforeEach(() => stubApi())
+ 
+ describe('SettingsPage', () => {
+   it('tải & hiển thị template Zalo mặc định khi mount', async () => {
+     render(<SettingsPage />)
+     await waitFor(() =>
+       expect(screen.getByLabelText(/mẫu tin nhắn zalo/i)).toHaveValue(DEFAULT_CONFIG.zaloMessageTemplate),
+diff --git a/src/renderer/src/pages/SettingsPage.tsx b/src/renderer/src/pages/SettingsPage.tsx
+index 2c7c9d3..af6d8e3 100644
+--- a/src/renderer/src/pages/SettingsPage.tsx
++++ b/src/renderer/src/pages/SettingsPage.tsx
+@@ -88,15 +88,28 @@ export default function SettingsPage(): JSX.Element {
+         <br />
+         <textarea
+           id="zalo-template"
+           value={config.zaloMessageTemplate}
+           onChange={e => set('zaloMessageTemplate', e.target.value)}
+           rows={10}
+           style={{ width: '100%', fontFamily: 'monospace' }}
+         />
+       </section>
+ 
++      <section style={{ marginBottom: 24 }}>
++        <h2>Văn phong nhận xét</h2>
++        <label htmlFor="style-hint">Văn phong nhận xét (Gemini dùng khi sửa nhận xét)</label>
++        <br />
++        <textarea
++          id="style-hint"
++          value={config.commentStyleHint}
++          onChange={e => set('commentStyleHint', e.target.value)}
++          rows={2}
++          style={{ width: '100%' }}
++        />
++      </section>
++
+       <button onClick={save}>Lưu</button>
+       {saved && <span style={{ marginLeft: 12, color: 'green' }}>Đã lưu ✓</span>}
+     </div>
+   )
+ }
+diff --git a/src/shared/types.ts b/src/shared/types.ts
+index c8a9834..4725e5d 100644
+--- a/src/shared/types.ts
++++ b/src/shared/types.ts
+@@ -1,17 +1,18 @@
+ export type StorageBackend = 'local' | 'supabase'
+ 
+ export interface AppConfig {
+   storageBackend: StorageBackend
+   localFolderPath: string | null
+   geminiApiKey: string | null
+   zaloMessageTemplate: string
++  commentStyleHint: string
+ }
+ 
+ export interface GeminiValidationResult {
+   valid: boolean
+   error?: string
+ }
+ 
+ export interface Student {
+   id: string
+   name: string
+@@ -26,47 +27,74 @@ export interface ClassSession {
+ }
+ 
+ export interface SchoolClass {
+   id: string
+   code: string
+   name: string
+   students: Student[]
+   sessions: ClassSession[]
+ }
+ 
++export interface StudentComment {
++  studentId: string
++  raw: string
++  polished: string
++}
++
++export interface SessionContent {
++  id: string
++  classId: string
++  sessionId: string
++  lessonContent: string
++  homework: string
++  comments: StudentComment[]
++}
++
+ export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
+ Nội dung bài học:
+ {noi_dung_bai_hoc}
+ Nhận xét từng học sinh:
+ {danh_sach_nhan_xet}
+ Bài tập về nhà:
+ {bai_tap_ve_nha}
+ Cảm ơn phụ huynh và các con!`
+ 
++export const DEFAULT_COMMENT_STYLE_HINT =
++  'nhẹ nhàng, khách quan, đúng mực, đúng văn phong giáo viên'
++
+ export const DEFAULT_CONFIG: AppConfig = {
+   storageBackend: 'local',
+   localFolderPath: null,
+   geminiApiKey: null,
+   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
++  commentStyleHint: DEFAULT_COMMENT_STYLE_HINT,
+ }
+ 
+ export const IPC = {
+   getConfig: 'config:get',
+   updateConfig: 'config:update',
+   validateGeminiKey: 'gemini:validateKey',
+   pickFolder: 'dialog:pickFolder',
+   listClasses: 'class:list',
+   getClass: 'class:get',
+   saveClass: 'class:save',
+   deleteClass: 'class:delete',
++  getContent: 'content:get',
++  saveContent: 'content:save',
++  extractLessonFromPdf: 'gemini:extractPdf',
++  rewriteComment: 'gemini:rewrite',
+ } as const
+ 
+ export interface AppApi {
+   getConfig(): Promise<AppConfig>
+   updateConfig(patch: Partial<AppConfig>): Promise<AppConfig>
+   validateGeminiKey(apiKey: string): Promise<GeminiValidationResult>
+   pickFolder(): Promise<string | null>
+   listClasses(): Promise<SchoolClass[]>
+   getClass(id: string): Promise<SchoolClass | null>
+   saveClass(cls: SchoolClass): Promise<void>
+   deleteClass(id: string): Promise<void>
++  getContent(sessionId: string): Promise<SessionContent | null>
++  saveContent(content: SessionContent): Promise<void>
++  extractLessonFromPdf(): Promise<string>
++  rewriteComment(studentName: string, raw: string): Promise<string>
+ }
+diff --git a/src/shared/zaloTemplate.test.ts b/src/shared/zaloTemplate.test.ts
+new file mode 100644
+index 0000000..066e3d1
+--- /dev/null
++++ b/src/shared/zaloTemplate.test.ts
+@@ -0,0 +1,47 @@
++import { describe, it, expect } from 'vitest'
++import { fillTemplate, formatCommentLines, formatSessionDate, ZaloTemplateData } from './zaloTemplate'
++import { DEFAULT_ZALO_TEMPLATE } from './types'
++
++const data: ZaloTemplateData = {
++  ten_lop: 'A1',
++  ngay_buoi_hoc: '20/07/2026 18:00',
++  noi_dung_bai_hoc: 'Bài 1',
++  danh_sach_nhan_xet: 'An: ngoan',
++  bai_tap_ve_nha: 'Làm bài 5',
++}
++
++describe('fillTemplate', () => {
++  it('điền đủ 5 biến vào template mặc định', () => {
++    const out = fillTemplate(DEFAULT_ZALO_TEMPLATE, data)
++    expect(out).toContain('lớp A1 ngày 20/07/2026 18:00')
++    expect(out).toContain('Bài 1')
++    expect(out).toContain('An: ngoan')
++    expect(out).toContain('Làm bài 5')
++    expect(out).not.toContain('{')
++  })
++  it('giữ nguyên {key} lạ không có trong data', () => {
++    expect(fillTemplate('Xin chào {khong_co}', data)).toBe('Xin chào {khong_co}')
++  })
++})
++
++describe('formatCommentLines', () => {
++  it('mỗi học sinh một dòng name: text', () => {
++    expect(formatCommentLines([{ name: 'An', text: 'ngoan' }, { name: 'Bình', text: 'khá' }]))
++      .toBe('An: ngoan\nBình: khá')
++  })
++  it('rỗng khi không có ai', () => {
++    expect(formatCommentLines([])).toBe('')
++  })
++})
++
++describe('formatSessionDate', () => {
++  it('định dạng dd/mm/yyyy HH:mm', () => {
++    expect(formatSessionDate('2026-07-20T18:05:00')).toBe('20/07/2026 18:05')
++  })
++  it('rỗng khi iso rỗng', () => {
++    expect(formatSessionDate('')).toBe('')
++  })
++  it('rỗng khi iso không hợp lệ', () => {
++    expect(formatSessionDate('không-phải-ngày')).toBe('')
++  })
++})
+diff --git a/src/shared/zaloTemplate.ts b/src/shared/zaloTemplate.ts
+new file mode 100644
+index 0000000..3c1d02b
+--- /dev/null
++++ b/src/shared/zaloTemplate.ts
+@@ -0,0 +1,28 @@
++export interface ZaloTemplateData {
++  ten_lop: string
++  ngay_buoi_hoc: string
++  noi_dung_bai_hoc: string
++  danh_sach_nhan_xet: string
++  bai_tap_ve_nha: string
++}
++
++/** Thay {key} bằng data[key]; giữ nguyên {key} nếu không có trong data. */
++export function fillTemplate(template: string, data: ZaloTemplateData): string {
++  return template.replace(/\{(\w+)\}/g, (match, key: string) =>
++    key in data ? String(data[key as keyof ZaloTemplateData]) : match,
++  )
++}
++
++/** Mỗi học sinh một dòng "Tên: nhận xét". */
++export function formatCommentLines(items: { name: string; text: string }[]): string {
++  return items.map(i => `${i.name}: ${i.text}`).join('\n')
++}
++
++/** ISO 8601 -> "dd/mm/yyyy HH:mm"; chuỗi rỗng nếu iso rỗng/không hợp lệ. */
++export function formatSessionDate(iso: string): string {
++  if (!iso) return ''
++  const d = new Date(iso)
++  if (Number.isNaN(d.getTime())) return ''
++  const p = (n: number): string => String(n).padStart(2, '0')
++  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
++}

@@ -1,0 +1,681 @@
+=== COMMITS ===
+ec84368 chore: M2 progress ledger
+36da9b7 feat: class management UI - nav + ClassesPage + ClassEditor (M2 Task 4-5)
+75ecbe8 feat: class data model + ClassRepository + IPC CRUD (M2 Task 1-3)
+
+=== STAT ===
+ src/main/classes/ClassRepository.test.ts    | 50 +++++++++++++++++++
+ src/main/classes/ClassRepository.ts         | 24 +++++++++
+ src/main/index.ts                           | 12 ++++-
+ src/main/ipcHandlers.test.ts                | 40 ++++++++++++++-
+ src/main/ipcHandlers.ts                     |  8 ++-
+ src/preload/index.ts                        |  4 ++
+ src/renderer/src/App.tsx                    | 13 ++++-
+ src/renderer/src/pages/ClassEditor.test.tsx | 51 +++++++++++++++++++
+ src/renderer/src/pages/ClassEditor.tsx      | 76 +++++++++++++++++++++++++++++
+ src/renderer/src/pages/ClassesPage.test.tsx | 52 ++++++++++++++++++++
+ src/renderer/src/pages/ClassesPage.tsx      | 72 +++++++++++++++++++++++++++
+ src/shared/id.test.ts                       | 12 +++++
+ src/shared/id.ts                            |  3 ++
+ src/shared/types.ts                         | 29 +++++++++++
+ 14 files changed, 442 insertions(+), 4 deletions(-)
+
+=== DIFF U10 ===
+diff --git a/src/main/classes/ClassRepository.test.ts b/src/main/classes/ClassRepository.test.ts
+new file mode 100644
+index 0000000..8004ced
+--- /dev/null
++++ b/src/main/classes/ClassRepository.test.ts
+@@ -0,0 +1,50 @@
++import { describe, it, expect, beforeEach, afterEach } from 'vitest'
++import { promises as fs } from 'node:fs'
++import { join } from 'node:path'
++import { tmpdir } from 'node:os'
++import { LocalStorageProvider } from '../storage/LocalStorageProvider'
++import { ClassRepository } from './ClassRepository'
++import { SchoolClass } from '../../shared/types'
++
++function makeClass(id: string, code: string): SchoolClass {
++  return { id, code, name: `Lớp ${code}`, students: [], sessions: [] }
++}
++
++let dir: string
++let repo: ClassRepository
++beforeEach(async () => {
++  dir = await fs.mkdtemp(join(tmpdir(), 'cls-'))
++  repo = new ClassRepository(new LocalStorageProvider(dir))
++})
++afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }) })
++
++describe('ClassRepository', () => {
++  it('list rỗng khi chưa có lớp', async () => {
++    expect(await repo.list()).toEqual([])
++  })
++  it('save rồi get trả lại đúng lớp', async () => {
++    const c = makeClass('c1', 'A1')
++    await repo.save(c)
++    expect(await repo.get('c1')).toEqual(c)
++  })
++  it('get trả null khi không có', async () => {
++    expect(await repo.get('nope')).toBeNull()
++  })
++  it('list trả tất cả lớp đã lưu', async () => {
++    await repo.save(makeClass('c1', 'A1'))
++    await repo.save(makeClass('c2', 'A2'))
++    const codes = (await repo.list()).map(c => c.code).sort()
++    expect(codes).toEqual(['A1', 'A2'])
++  })
++  it('save ghi đè lớp cùng id', async () => {
++    await repo.save(makeClass('c1', 'A1'))
++    await repo.save({ ...makeClass('c1', 'A1'), name: 'Đổi tên' })
++    expect((await repo.get('c1'))?.name).toBe('Đổi tên')
++    expect(await repo.list()).toHaveLength(1)
++  })
++  it('delete xóa lớp', async () => {
++    await repo.save(makeClass('c1', 'A1'))
++    await repo.delete('c1')
++    expect(await repo.get('c1')).toBeNull()
++  })
++})
+diff --git a/src/main/classes/ClassRepository.ts b/src/main/classes/ClassRepository.ts
+new file mode 100644
+index 0000000..00438de
+--- /dev/null
++++ b/src/main/classes/ClassRepository.ts
+@@ -0,0 +1,24 @@
++import { StorageProvider } from '../storage/StorageProvider'
++import { SchoolClass } from '../../shared/types'
++
++const COLLECTION = 'classes'
++
++export class ClassRepository {
++  constructor(private readonly storage: StorageProvider) {}
++
++  list(): Promise<SchoolClass[]> {
++    return this.storage.list<SchoolClass>(COLLECTION)
++  }
++
++  get(id: string): Promise<SchoolClass | null> {
++    return this.storage.read<SchoolClass>(COLLECTION, id)
++  }
++
++  save(cls: SchoolClass): Promise<void> {
++    return this.storage.write(COLLECTION, cls.id, cls)
++  }
++
++  delete(id: string): Promise<void> {
++    return this.storage.delete(COLLECTION, id)
++  }
++}
+diff --git a/src/main/index.ts b/src/main/index.ts
+index df7d2a1..7672378 100644
+--- a/src/main/index.ts
++++ b/src/main/index.ts
+@@ -1,15 +1,17 @@
+ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+ import { join } from 'node:path'
+ import { ConfigStore } from './config/configStore'
+ import { validateGeminiApiKey } from './gemini/geminiClient'
+ import { createIpcHandlers } from './ipcHandlers'
++import { createStorageProvider } from './storage'
++import { ClassRepository } from './classes/ClassRepository'
+ import { IPC } from '../shared/types'
+ 
+ function createWindow(): BrowserWindow {
+   const win = new BrowserWindow({
+     width: 1000,
+     height: 720,
+     webPreferences: {
+       preload: join(__dirname, '../preload/index.js'),
+       contextIsolation: true,
+       nodeIntegration: false,
+@@ -22,26 +24,34 @@ function createWindow(): BrowserWindow {
+   }
+   return win
+ }
+ 
+ function registerIpc(): void {
+   const configStore = new ConfigStore(app.getPath('userData'))
+   const pickFolder = async (): Promise<string | null> => {
+     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+   }
+-  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder })
++  const getRepository = async (): Promise<ClassRepository> => {
++    const cfg = await configStore.load()
++    return new ClassRepository(createStorageProvider(cfg))
++  }
++  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder, getRepository })
+ 
+   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
+   ipcMain.handle(IPC.updateConfig, (_e, patch) => handlers.updateConfig(patch))
+   ipcMain.handle(IPC.validateGeminiKey, (_e, apiKey: string) => handlers.validateGeminiKey(apiKey))
+   ipcMain.handle(IPC.pickFolder, () => handlers.pickFolder())
++  ipcMain.handle(IPC.listClasses, () => handlers.listClasses())
++  ipcMain.handle(IPC.getClass, (_e, id: string) => handlers.getClass(id))
++  ipcMain.handle(IPC.saveClass, (_e, cls) => handlers.saveClass(cls))
++  ipcMain.handle(IPC.deleteClass, (_e, id: string) => handlers.deleteClass(id))
+ }
+ 
+ app.whenReady().then(() => {
+   registerIpc()
+   createWindow()
+   app.on('activate', () => {
+     if (BrowserWindow.getAllWindows().length === 0) createWindow()
+   })
+ })
+ 
+diff --git a/src/main/ipcHandlers.test.ts b/src/main/ipcHandlers.test.ts
+index 9055720..3ecd145 100644
+--- a/src/main/ipcHandlers.test.ts
++++ b/src/main/ipcHandlers.test.ts
+@@ -1,13 +1,13 @@
+ import { describe, it, expect, vi } from 'vitest'
+ import { createIpcHandlers } from './ipcHandlers'
+-import { DEFAULT_CONFIG } from '../shared/types'
++import { DEFAULT_CONFIG, SchoolClass } from '../shared/types'
+ 
+ function makeDeps() {
+   const configStore = {
+     load: vi.fn(async () => DEFAULT_CONFIG),
+     save: vi.fn(async () => {}),
+     update: vi.fn(async (patch) => ({ ...DEFAULT_CONFIG, ...patch })),
+   }
+   const validateGeminiKey = vi.fn(async () => ({ valid: true }))
+   const pickFolder = vi.fn(async () => '/chosen')
+   return { configStore, validateGeminiKey, pickFolder }
+@@ -35,10 +35,48 @@ describe('createIpcHandlers', () => {
+     expect(await api.validateGeminiKey('k')).toEqual({ valid: true })
+     expect(deps.validateGeminiKey).toHaveBeenCalledWith('k')
+   })
+ 
+   it('pickFolder ủy quyền cho dep', async () => {
+     const deps = makeDeps()
+     const api = createIpcHandlers(deps as never)
+     expect(await api.pickFolder()).toBe('/chosen')
+   })
+ })
++
++describe('createIpcHandlers — class methods', () => {
++  function makeClassDeps() {
++    const repo = {
++      list: vi.fn(async () => [] as SchoolClass[]),
++      get: vi.fn(async () => null),
++      save: vi.fn(async () => {}),
++      delete: vi.fn(async () => {}),
++    }
++    const base = {
++      configStore: { load: vi.fn(), save: vi.fn(), update: vi.fn() },
++      validateGeminiKey: vi.fn(),
++      pickFolder: vi.fn(),
++      getRepository: vi.fn(async () => repo),
++    }
++    return { base, repo }
++  }
++
++  it('listClasses ủy quyền cho repo.list', async () => {
++    const { base, repo } = makeClassDeps()
++    const api = createIpcHandlers(base as never)
++    await api.listClasses()
++    expect(repo.list).toHaveBeenCalledOnce()
++  })
++  it('saveClass ủy quyền cho repo.save', async () => {
++    const { base, repo } = makeClassDeps()
++    const api = createIpcHandlers(base as never)
++    const c: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [], sessions: [] }
++    await api.saveClass(c)
++    expect(repo.save).toHaveBeenCalledWith(c)
++  })
++  it('deleteClass ủy quyền cho repo.delete', async () => {
++    const { base, repo } = makeClassDeps()
++    const api = createIpcHandlers(base as never)
++    await api.deleteClass('c1')
++    expect(repo.delete).toHaveBeenCalledWith('c1')
++  })
++})
+diff --git a/src/main/ipcHandlers.ts b/src/main/ipcHandlers.ts
+index 157ca3f..29790b2 100644
+--- a/src/main/ipcHandlers.ts
++++ b/src/main/ipcHandlers.ts
+@@ -1,17 +1,23 @@
+-import { AppApi, AppConfig, GeminiValidationResult } from '../shared/types'
++import { AppApi, AppConfig, GeminiValidationResult, SchoolClass } from '../shared/types'
+ import { ConfigStore } from './config/configStore'
++import { ClassRepository } from './classes/ClassRepository'
+ 
+ export interface IpcDeps {
+   configStore: ConfigStore
+   validateGeminiKey: (apiKey: string) => Promise<GeminiValidationResult>
+   pickFolder: () => Promise<string | null>
++  getRepository: () => Promise<ClassRepository>
+ }
+ 
+ export function createIpcHandlers(deps: IpcDeps): AppApi {
+   return {
+     getConfig: () => deps.configStore.load(),
+     updateConfig: (patch: Partial<AppConfig>) => deps.configStore.update(patch),
+     validateGeminiKey: (apiKey: string) => deps.validateGeminiKey(apiKey),
+     pickFolder: () => deps.pickFolder(),
++    listClasses: async () => (await deps.getRepository()).list(),
++    getClass: async (id: string) => (await deps.getRepository()).get(id),
++    saveClass: async (cls: SchoolClass) => (await deps.getRepository()).save(cls),
++    deleteClass: async (id: string) => (await deps.getRepository()).delete(id),
+   }
+ }
+diff --git a/src/preload/index.ts b/src/preload/index.ts
+index f81aadb..48f7792 100644
+--- a/src/preload/index.ts
++++ b/src/preload/index.ts
+@@ -1,11 +1,15 @@
+ import { contextBridge, ipcRenderer } from 'electron'
+ import { AppApi, IPC } from '../shared/types'
+ 
+ const api: AppApi = {
+   getConfig: () => ipcRenderer.invoke(IPC.getConfig),
+   updateConfig: (patch) => ipcRenderer.invoke(IPC.updateConfig, patch),
+   validateGeminiKey: (apiKey) => ipcRenderer.invoke(IPC.validateGeminiKey, apiKey),
+   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
++  listClasses: () => ipcRenderer.invoke(IPC.listClasses),
++  getClass: (id) => ipcRenderer.invoke(IPC.getClass, id),
++  saveClass: (cls) => ipcRenderer.invoke(IPC.saveClass, cls),
++  deleteClass: (id) => ipcRenderer.invoke(IPC.deleteClass, id),
+ }
+ 
+ contextBridge.exposeInMainWorld('api', api)
+diff --git a/src/renderer/src/App.tsx b/src/renderer/src/App.tsx
+index 10df1bb..09069b0 100644
+--- a/src/renderer/src/App.tsx
++++ b/src/renderer/src/App.tsx
+@@ -1,5 +1,16 @@
++import { useState } from 'react'
+ import SettingsPage from './pages/SettingsPage'
++import ClassesPage from './pages/ClassesPage'
+ 
+ export default function App(): JSX.Element {
+-  return <SettingsPage />
++  const [tab, setTab] = useState<'classes' | 'settings'>('classes')
++  return (
++    <div style={{ fontFamily: 'system-ui' }}>
++      <nav style={{ display: 'flex', gap: 8, padding: 12, borderBottom: '1px solid #ddd' }}>
++        <button onClick={() => setTab('classes')} disabled={tab === 'classes'}>Lớp học</button>
++        <button onClick={() => setTab('settings')} disabled={tab === 'settings'}>Cấu hình</button>
++      </nav>
++      {tab === 'classes' ? <ClassesPage /> : <SettingsPage />}
++    </div>
++  )
+ }
+diff --git a/src/renderer/src/pages/ClassEditor.test.tsx b/src/renderer/src/pages/ClassEditor.test.tsx
+new file mode 100644
+index 0000000..182ca91
+--- /dev/null
++++ b/src/renderer/src/pages/ClassEditor.test.tsx
+@@ -0,0 +1,51 @@
++// @vitest-environment jsdom
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, waitFor, fireEvent } from '@testing-library/react'
++import ClassEditor from './ClassEditor'
++import { SchoolClass } from '../../../shared/types'
++
++function stub() {
++  const api = {
++    getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
++    listClasses: vi.fn(), getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(),
++  }
++  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++  return api
++}
++beforeEach(() => stub())
++
++const base: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [{ id: 's1', name: 'An' }], sessions: [] }
++
++describe('ClassEditor', () => {
++  it('hiển thị mã/tên/học sinh hiện có', () => {
++    render(<ClassEditor cls={base} onDone={() => {}} />)
++    expect(screen.getByLabelText(/mã lớp/i)).toHaveValue('A1')
++    expect(screen.getByLabelText(/tên lớp/i)).toHaveValue('Lớp A1')
++    expect(screen.getByDisplayValue('An')).toBeInTheDocument()
++  })
++  it('thêm học sinh tạo ô nhập mới', () => {
++    render(<ClassEditor cls={base} onDone={() => {}} />)
++    fireEvent.click(screen.getByText(/thêm học sinh/i))
++    expect(screen.getAllByPlaceholderText(/tên học sinh/i).length).toBe(2)
++  })
++  it('sửa mã rồi Lưu gọi saveClass với mã mới', async () => {
++    const api = stub()
++    const onDone = vi.fn()
++    render(<ClassEditor cls={base} onDone={onDone} />)
++    fireEvent.change(screen.getByLabelText(/mã lớp/i), { target: { value: 'B2' } })
++    fireEvent.click(screen.getByText(/^lưu$/i))
++    await waitFor(() => expect(api.saveClass).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1', code: 'B2' })))
++    await waitFor(() => expect(onDone).toHaveBeenCalled())
++  })
++  it('thêm buổi học tạo ô datetime mới', () => {
++    render(<ClassEditor cls={base} onDone={() => {}} />)
++    fireEvent.click(screen.getByText(/thêm buổi/i))
++    expect(screen.getAllByLabelText(/thời điểm buổi/i).length).toBe(1)
++  })
++  it('"Quay lại" gọi onDone', () => {
++    const onDone = vi.fn()
++    render(<ClassEditor cls={base} onDone={onDone} />)
++    fireEvent.click(screen.getByText(/quay lại/i))
++    expect(onDone).toHaveBeenCalled()
++  })
++})
+diff --git a/src/renderer/src/pages/ClassEditor.tsx b/src/renderer/src/pages/ClassEditor.tsx
+new file mode 100644
+index 0000000..912f3ee
+--- /dev/null
++++ b/src/renderer/src/pages/ClassEditor.tsx
+@@ -0,0 +1,76 @@
++import { useState } from 'react'
++import { SchoolClass, Student, ClassSession } from '../../../shared/types'
++import { newId } from '../../../shared/id'
++
++export default function ClassEditor({ cls, onDone }: { cls: SchoolClass; onDone: () => void }): JSX.Element {
++  const [draft, setDraft] = useState<SchoolClass>(cls)
++
++  const set = <K extends keyof SchoolClass>(k: K, v: SchoolClass[K]): void =>
++    setDraft(prev => ({ ...prev, [k]: v }))
++
++  const addStudent = (): void =>
++    set('students', [...draft.students, { id: newId(), name: '' } as Student])
++  const setStudent = (id: string, name: string): void =>
++    set('students', draft.students.map(s => (s.id === id ? { ...s, name } : s)))
++  const removeStudent = (id: string): void =>
++    set('students', draft.students.filter(s => s.id !== id))
++
++  const addSession = (): void =>
++    set('sessions', [...draft.sessions, { id: newId(), dateTime: '' } as ClassSession])
++  const setSession = (id: string, dateTime: string): void =>
++    set('sessions', draft.sessions.map(s => (s.id === id ? { ...s, dateTime } : s)))
++  const removeSession = (id: string): void =>
++    set('sessions', draft.sessions.filter(s => s.id !== id))
++
++  const save = async (): Promise<void> => {
++    await window.api.saveClass(draft)
++    onDone()
++  }
++
++  return (
++    <div style={{ padding: 24, maxWidth: 720 }}>
++      <button onClick={onDone}>← Quay lại</button>
++      <h2>Soạn lớp</h2>
++
++      <div style={{ marginBottom: 12 }}>
++        <label htmlFor="cls-code">Mã lớp</label><br />
++        <input id="cls-code" value={draft.code} onChange={e => set('code', e.target.value)} />
++      </div>
++      <div style={{ marginBottom: 20 }}>
++        <label htmlFor="cls-name">Tên lớp</label><br />
++        <input id="cls-name" value={draft.name} onChange={e => set('name', e.target.value)} style={{ width: 360 }} />
++      </div>
++
++      <h3>Học sinh</h3>
++      {draft.students.map(s => (
++        <div key={s.id} style={{ marginBottom: 6 }}>
++          <input
++            placeholder="Tên học sinh"
++            value={s.name}
++            onChange={e => setStudent(s.id, e.target.value)}
++          />{' '}
++          <button aria-label={`Xóa học sinh ${s.name}`} onClick={() => removeStudent(s.id)}>×</button>
++        </div>
++      ))}
++      <button onClick={addStudent}>+ Thêm học sinh</button>
++
++      <h3 style={{ marginTop: 20 }}>Buổi học</h3>
++      {draft.sessions.map(s => (
++        <div key={s.id} style={{ marginBottom: 6 }}>
++          <input
++            type="datetime-local"
++            aria-label="Thời điểm buổi"
++            value={s.dateTime}
++            onChange={e => setSession(s.id, e.target.value)}
++          />{' '}
++          <button aria-label="Xóa buổi" onClick={() => removeSession(s.id)}>×</button>
++        </div>
++      ))}
++      <button onClick={addSession}>+ Thêm buổi</button>
++
++      <div style={{ marginTop: 24 }}>
++        <button onClick={save}>Lưu</button>
++      </div>
++    </div>
++  )
++}
+diff --git a/src/renderer/src/pages/ClassesPage.test.tsx b/src/renderer/src/pages/ClassesPage.test.tsx
+new file mode 100644
+index 0000000..4c9cc63
+--- /dev/null
++++ b/src/renderer/src/pages/ClassesPage.test.tsx
+@@ -0,0 +1,52 @@
++// @vitest-environment jsdom
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, waitFor, fireEvent } from '@testing-library/react'
++import ClassesPage from './ClassesPage'
++import { SchoolClass } from '../../../shared/types'
++
++function stub(overrides: Partial<Window['api']> = {}) {
++  const api = {
++    getConfig: vi.fn(), updateConfig: vi.fn(), validateGeminiKey: vi.fn(), pickFolder: vi.fn(),
++    listClasses: vi.fn(async () => [] as SchoolClass[]),
++    getClass: vi.fn(), saveClass: vi.fn(async () => {}), deleteClass: vi.fn(async () => {}),
++    ...overrides,
++  }
++  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
++  return api
++}
++beforeEach(() => stub())
++
++const c1: SchoolClass = { id: 'c1', code: 'A1', name: 'Lớp A1', students: [{ id: 's1', name: 'An' }], sessions: [] }
++
++describe('ClassesPage', () => {
++  it('hiển thị "chưa có lớp" khi danh sách rỗng', async () => {
++    render(<ClassesPage />)
++    await waitFor(() => expect(screen.getByText(/chưa có lớp/i)).toBeInTheDocument())
++  })
++  it('liệt kê lớp đã có (mã + tên + số HS)', async () => {
++    stub({ listClasses: vi.fn(async () => [c1]) })
++    render(<ClassesPage />)
++    await waitFor(() => expect(screen.getByText('A1')).toBeInTheDocument())
++    expect(screen.getByText(/Lớp A1/)).toBeInTheDocument()
++    expect(screen.getByText(/1 học sinh/i)).toBeInTheDocument()
++  })
++  it('bấm "Thêm lớp" mở trình soạn (hiện ô Mã lớp)', async () => {
++    render(<ClassesPage />)
++    await waitFor(() => screen.getByText(/thêm lớp/i))
++    fireEvent.click(screen.getByText(/thêm lớp/i))
++    await waitFor(() => expect(screen.getByLabelText(/mã lớp/i)).toBeInTheDocument())
++  })
++  it('bấm "Xóa" gọi deleteClass rồi tải lại', async () => {
++    const api = stub({ listClasses: vi.fn(async () => [c1]) })
++    render(<ClassesPage />)
++    await waitFor(() => screen.getByText('A1'))
++    fireEvent.click(screen.getByLabelText(/xóa lớp A1/i))
++    await waitFor(() => expect(api.deleteClass).toHaveBeenCalledWith('c1'))
++    expect(api.listClasses).toHaveBeenCalledTimes(2)
++  })
++  it('báo lỗi khi listClasses thất bại (chưa cấu hình thư mục)', async () => {
++    stub({ listClasses: vi.fn(async () => { throw new Error('Chưa chọn thư mục') }) })
++    render(<ClassesPage />)
++    await waitFor(() => expect(screen.getByText(/chưa chọn thư mục/i)).toBeInTheDocument())
++  })
++})
+diff --git a/src/renderer/src/pages/ClassesPage.tsx b/src/renderer/src/pages/ClassesPage.tsx
+new file mode 100644
+index 0000000..f7fdea9
+--- /dev/null
++++ b/src/renderer/src/pages/ClassesPage.tsx
+@@ -0,0 +1,72 @@
++import { useEffect, useState } from 'react'
++import { SchoolClass } from '../../../shared/types'
++import { newId } from '../../../shared/id'
++import ClassEditor from './ClassEditor'
++
++function emptyClass(): SchoolClass {
++  return { id: newId(), code: '', name: '', students: [], sessions: [] }
++}
++
++export default function ClassesPage(): JSX.Element {
++  const [classes, setClasses] = useState<SchoolClass[]>([])
++  const [error, setError] = useState<string | null>(null)
++  const [editing, setEditing] = useState<SchoolClass | null>(null)
++
++  const reload = async (): Promise<void> => {
++    try {
++      setClasses(await window.api.listClasses())
++      setError(null)
++    } catch (err) {
++      setError((err as Error).message)
++    }
++  }
++
++  useEffect(() => {
++    if (!editing) void reload()
++  }, [editing])
++
++  const remove = async (id: string): Promise<void> => {
++    await window.api.deleteClass(id)
++    await reload()
++  }
++
++  if (editing) {
++    return <ClassEditor cls={editing} onDone={() => setEditing(null)} />
++  }
++
++  return (
++    <div style={{ padding: 24, maxWidth: 720, fontFamily: 'system-ui' }}>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
++        <h1>Lớp học</h1>
++        <button onClick={() => setEditing(emptyClass())}>+ Thêm lớp</button>
++      </div>
++
++      {error && (
++        <p style={{ color: 'crimson' }}>
++          Không tải được danh sách lớp: {error}. Hãy chọn thư mục lưu dữ liệu trong tab Cấu hình.
++        </p>
++      )}
++
++      {!error && classes.length === 0 && <p>Chưa có lớp nào.</p>}
++
++      <ul style={{ listStyle: 'none', padding: 0 }}>
++        {classes.map(c => (
++          <li key={c.id} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 8 }}>
++            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
++              <div>
++                <strong>{c.code}</strong> — {c.name}
++                <div style={{ color: '#666', fontSize: 13 }}>
++                  {c.students.length} học sinh · {c.sessions.length} buổi
++                </div>
++              </div>
++              <div>
++                <button onClick={() => setEditing(c)}>Sửa</button>{' '}
++                <button aria-label={`Xóa lớp ${c.code}`} onClick={() => remove(c.id)}>Xóa</button>
++              </div>
++            </div>
++          </li>
++        ))}
++      </ul>
++    </div>
++  )
++}
+diff --git a/src/shared/id.test.ts b/src/shared/id.test.ts
+new file mode 100644
+index 0000000..0dc6c87
+--- /dev/null
++++ b/src/shared/id.test.ts
+@@ -0,0 +1,12 @@
++import { describe, it, expect } from 'vitest'
++import { newId } from './id'
++
++describe('newId', () => {
++  it('trả chuỗi không rỗng', () => {
++    expect(typeof newId()).toBe('string')
++    expect(newId().length).toBeGreaterThan(0)
++  })
++  it('mỗi lần gọi ra id khác nhau', () => {
++    expect(newId()).not.toBe(newId())
++  })
++})
+diff --git a/src/shared/id.ts b/src/shared/id.ts
+new file mode 100644
+index 0000000..dee9dd9
+--- /dev/null
++++ b/src/shared/id.ts
+@@ -0,0 +1,3 @@
++export function newId(): string {
++  return globalThis.crypto.randomUUID()
++}
+diff --git a/src/shared/types.ts b/src/shared/types.ts
+index 6df3564..c8a9834 100644
+--- a/src/shared/types.ts
++++ b/src/shared/types.ts
+@@ -5,20 +5,41 @@ export interface AppConfig {
+   localFolderPath: string | null
+   geminiApiKey: string | null
+   zaloMessageTemplate: string
+ }
+ 
+ export interface GeminiValidationResult {
+   valid: boolean
+   error?: string
+ }
+ 
++export interface Student {
++  id: string
++  name: string
++  note?: string
++}
++
++export interface ClassSession {
++  id: string
++  /** ISO 8601 datetime của buổi học, vd "2026-07-20T18:00:00" */
++  dateTime: string
++  label?: string
++}
++
++export interface SchoolClass {
++  id: string
++  code: string
++  name: string
++  students: Student[]
++  sessions: ClassSession[]
++}
++
+ export const DEFAULT_ZALO_TEMPLATE = `@All Em xin gửi nhận xét buổi học của các học sinh lớp {ten_lop} ngày {ngay_buoi_hoc} ạ
+ Nội dung bài học:
+ {noi_dung_bai_hoc}
+ Nhận xét từng học sinh:
+ {danh_sach_nhan_xet}
+ Bài tập về nhà:
+ {bai_tap_ve_nha}
+ Cảm ơn phụ huynh và các con!`
+ 
+ export const DEFAULT_CONFIG: AppConfig = {
+@@ -26,18 +47,26 @@ export const DEFAULT_CONFIG: AppConfig = {
+   localFolderPath: null,
+   geminiApiKey: null,
+   zaloMessageTemplate: DEFAULT_ZALO_TEMPLATE,
+ }
+ 
+ export const IPC = {
+   getConfig: 'config:get',
+   updateConfig: 'config:update',
+   validateGeminiKey: 'gemini:validateKey',
+   pickFolder: 'dialog:pickFolder',
++  listClasses: 'class:list',
++  getClass: 'class:get',
++  saveClass: 'class:save',
++  deleteClass: 'class:delete',
+ } as const
+ 
+ export interface AppApi {
+   getConfig(): Promise<AppConfig>
+   updateConfig(patch: Partial<AppConfig>): Promise<AppConfig>
+   validateGeminiKey(apiKey: string): Promise<GeminiValidationResult>
+   pickFolder(): Promise<string | null>
++  listClasses(): Promise<SchoolClass[]>
++  getClass(id: string): Promise<SchoolClass | null>
++  saveClass(cls: SchoolClass): Promise<void>
++  deleteClass(id: string): Promise<void>
+ }

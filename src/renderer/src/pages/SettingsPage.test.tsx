@@ -12,7 +12,7 @@ function stubApi(overrides: Partial<Window['api']> = {}) {
     pickFolder: vi.fn(async () => '/data/mindx'),
     ...overrides,
   }
-  ;(window as unknown as { api: Window['api'] }).api = api as Window['api']
+  ;(window as unknown as { api: Window['api'] }).api = api as unknown as Window['api']
   return api
 }
 
@@ -52,6 +52,27 @@ describe('SettingsPage', () => {
     fireEvent.change(screen.getByLabelText(/api key gemini/i), { target: { value: 'bad' } })
     fireEvent.click(screen.getByText(/kiểm tra key/i))
     await waitFor(() => expect(screen.getByText(/không hợp lệ/i)).toBeInTheDocument())
+  })
+
+  it('nhập email LMS rồi rời ô -> tự lưu ngay (updateConfig)', async () => {
+    const api = stubApi()
+    render(<SettingsPage />)
+    await waitFor(() => screen.getByLabelText(/email lms/i))
+    const email = screen.getByLabelText(/email lms/i)
+    fireEvent.change(email, { target: { value: 'itsupport@beamewa.com.vn' } })
+    fireEvent.blur(email)
+    await waitFor(() => expect(api.updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ lmsEmail: 'itsupport@beamewa.com.vn' }),
+    ))
+    await waitFor(() => expect(screen.getByText(/đã lưu tài khoản lms/i)).toBeInTheDocument())
+  })
+
+  it('nút "Hiện" đổi ô mật khẩu sang dạng chữ', async () => {
+    render(<SettingsPage />)
+    await waitFor(() => screen.getByLabelText(/mật khẩu lms/i))
+    expect(screen.getByLabelText(/mật khẩu lms/i)).toHaveAttribute('type', 'password')
+    fireEvent.click(screen.getByRole('button', { name: /hiện mật khẩu/i }))
+    expect(screen.getByLabelText(/mật khẩu lms/i)).toHaveAttribute('type', 'text')
   })
 
   it('bấm "Lưu" gọi updateConfig với dữ liệu đang nhập', async () => {

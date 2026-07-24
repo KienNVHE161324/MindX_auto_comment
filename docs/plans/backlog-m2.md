@@ -8,3 +8,13 @@ Các finding Minor từ review tổng nhánh M1 — không chặn merge, xử l�
 
 Đã xử lý trong M1 (không còn tồn đọng):
 - [x] Ghi config atomic + fallback khi config.json hỏng (commit 9e1d625).
+
+## Minor còn lại từ review M2 (nợ kỹ thuật, làm ở M3)
+- [ ] `ClassesPage` useEffect: `reload` không nằm trong dep array (bọc useCallback hoặc inline) — chưa gây bug vì chỉ capture window.api.
+- [ ] `ClassEditor` khởi tạo `useState(cls)` không sync nếu prop đổi khi đang mở — hiện an toàn vì mount/unmount theo `editing`.
+- [ ] `getRepository` tạo instance mới mỗi IPC call (load config + provider). OK với local; refactor khi thêm Supabase (connection pool) ở phase online.
+
+Đã xử lý trong review M2 (commit d7106cb):
+- [x] try/catch cho save/delete + hiển thị lỗi.
+- [x] functional updater tránh stale closure.
+- [x] aria-label nút xóa buổi là duy nhất; thêm test getClass + save-fail.

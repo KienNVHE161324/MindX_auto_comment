@@ -1,20 +1,34 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { ConfigStore } from './config/configStore'
-import { validateGeminiApiKey } from './gemini/geminiClient'
+import { validateGeminiApiKey, extractLessonContent, rewriteComment, rewriteCommentsBatch, setGeminiModel } from './gemini/geminiClient'
 import { createIpcHandlers } from './ipcHandlers'
+import { createStorageProvider } from './storage'
+import { ClassRepository } from './classes/ClassRepository'
+import { ContentRepository } from './content/ContentRepository'
+import { LmsAutomator } from './automation/LmsAutomator'
+import { AutoSendScheduler } from './automation/AutoSendScheduler'
+import { createZaloDesktopAutomator } from './automation/ZaloDesktopAutomator'
+import { WorkflowMutex } from './automation/WorkflowMutex'
 import { IPC } from '../shared/types'
 
+const AUTO_SEND_INTERVAL_MS = 60_000
+
 function createWindow(): BrowserWindow {
+  // Bỏ hẳn thanh menu mặc định của Electron (File/Edit/View/Window/Help).
+  Menu.setApplicationMenu(null)
   const win = new BrowserWindow({
     width: 1000,
     height: 720,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
+  win.setMenuBarVisibility(false)
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -23,23 +37,151 @@ function createWindow(): BrowserWindow {
   return win
 }
 
-function registerIpc(): void {
-  const configStore = new ConfigStore(app.getPath('userData'))
+// Singleton automator — browser stays open across IPC calls
+const externalWorkflowMutex = new WorkflowMutex()
+const lmsAutomator = new LmsAutomator(
+  join(app.getPath('userData'), 'lms-browser'),
+  undefined,
+  externalWorkflowMutex,
+)
+const zaloAutomator = createZaloDesktopAutomator(
+  app.isPackaged
+    ? join(process.resourcesPath, 'zalo-desktop-uia.ps1')
+    : join(app.getAppPath(), 'resources', 'zalo-desktop-uia.ps1'),
+  join(app.getPath('userData'), 'zalo-desktop-debug'),
+  externalWorkflowMutex,
+)
+
+const configStore = new ConfigStore(app.getPath('userData'))
+const getRepository = async (): Promise<ClassRepository> => {
+  const cfg = await configStore.load()
+  return new ClassRepository(createStorageProvider(cfg))
+}
+const getContentRepository = async (): Promise<ContentRepository> => {
+  const cfg = await configStore.load()
+  return new ContentRepository(createStorageProvider(cfg))
+}
+
+function createAutoSendScheduler(): AutoSendScheduler {
+  return new AutoSendScheduler({
+    getClasses: async () => (await getRepository()).list(),
+    getContent: async (sessionId) => (await getContentRepository()).get(sessionId),
+    updateContentMetadata: async (sessionId, patch) =>
+      (await getContentRepository()).updateMetadata(sessionId, patch),
+    getConfig: () => configStore.load(),
+    lmsOpenBrowser: async () => {
+      const cfg = await configStore.load()
+      return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
+    },
+    lmsPostSession: (params) => lmsAutomator.postSession(params),
+    runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
+    sendZaloMessage: input => zaloAutomator.sendMessage(input),
+    log: (msg) => console.log(msg),
+  })
+}
+
+function startAutoSendTimer(scheduler: AutoSendScheduler): void {
+  setInterval(() => { void scheduler.tick() }, AUTO_SEND_INTERVAL_MS)
+}
+
+function registerIpc(scheduler: AutoSendScheduler): void {
   const pickFolder = async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
   }
-  const handlers = createIpcHandlers({ configStore, validateGeminiKey: validateGeminiApiKey, pickFolder })
+  const requireApiKey = async (): Promise<string> => {
+    const cfg = await configStore.load()
+    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
+    return cfg.geminiApiKey
+  }
+  const extractPdf = async (): Promise<string> => {
+    const apiKey = await requireApiKey()
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      throw new Error('Chưa chọn file PDF.')
+    }
+    const bytes = await fs.readFile(result.filePaths[0])
+    return extractLessonContent(apiKey, bytes.toString('base64'))
+  }
+  const rewrite = async (studentName: string, raw: string): Promise<string> => {
+    const cfg = await configStore.load()
+    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
+    return rewriteComment(cfg.geminiApiKey, studentName, raw, cfg.commentStyleHint)
+  }
+  const rewriteBatch = async (
+    items: { name: string; raw: string }[],
+    lessonContent?: string,
+  ): Promise<string[]> => {
+    const cfg = await configStore.load()
+    if (!cfg.geminiApiKey) throw new Error('Chưa cấu hình API key Gemini trong tab Cấu hình.')
+    setGeminiModel(cfg.geminiModel)
+    // Chỉ lồng bài học khi người dùng bật tùy chọn trong Cấu hình.
+    const lesson = cfg.includeLessonInRewrite ? (lessonContent ?? '') : ''
+    return rewriteCommentsBatch(cfg.geminiApiKey, items, cfg.commentStyleHint, lesson)
+  }
+  const handlers = createIpcHandlers({
+    configStore,
+    validateGeminiKey: validateGeminiApiKey,
+    pickFolder,
+    getRepository,
+    getContentRepository,
+    extractPdf,
+    rewrite,
+    rewriteBatch,
+    lmsOpenBrowser: async () => {
+      const cfg = await configStore.load()
+      return lmsAutomator.openBrowser(cfg.lmsEmail ?? undefined, cfg.lmsPassword ?? undefined)
+    },
+    lmsPostSession: (params) => lmsAutomator.postSession(params),
+    runLmsPostExclusive: operation => lmsAutomator.runPostSessionExclusive(operation),
+    lmsSyncAll: (params) => lmsAutomator.syncAll(params.existingCodes, params.contentTargets),
+    sendZaloMessage: input => zaloAutomator.sendMessage(input),
+    now: () => new Date(),
+    getAutoSendCatchUp: () => scheduler.getCatchUpItems(),
+    runAutoSendCatchUp: () => scheduler.runCatchUp(),
+  })
 
   ipcMain.handle(IPC.getConfig, () => handlers.getConfig())
   ipcMain.handle(IPC.updateConfig, (_e, patch) => handlers.updateConfig(patch))
   ipcMain.handle(IPC.validateGeminiKey, (_e, apiKey: string) => handlers.validateGeminiKey(apiKey))
   ipcMain.handle(IPC.pickFolder, () => handlers.pickFolder())
+  ipcMain.handle(IPC.listClasses, () => handlers.listClasses())
+  ipcMain.handle(IPC.getClass, (_e, id: string) => handlers.getClass(id))
+  ipcMain.handle(IPC.saveClass, (_e, cls) => handlers.saveClass(cls))
+  ipcMain.handle(IPC.deleteClass, (_e, id: string) => handlers.deleteClass(id))
+  ipcMain.handle(IPC.getContent, (_e, sessionId: string) => handlers.getContent(sessionId))
+  ipcMain.handle(IPC.saveContent, (_e, content) => handlers.saveContent(content))
+  ipcMain.handle(IPC.extractLessonFromPdf, () => handlers.extractLessonFromPdf())
+  ipcMain.handle(IPC.rewriteComment, (_e, name: string, raw: string) => handlers.rewriteComment(name, raw))
+  ipcMain.handle(IPC.rewriteCommentsBatch, (_e, items, lessonContent) => handlers.rewriteCommentsBatch(items, lessonContent))
+  ipcMain.handle(IPC.lmsOpenBrowser, () => handlers.lmsOpenBrowser())
+  ipcMain.handle(IPC.lmsPostSession, (_e, params) => handlers.lmsPostSession(params))
+  ipcMain.handle(
+    IPC.lmsPostSessionAndSave,
+    (_e, request) => handlers.lmsPostSessionAndSave(request),
+  )
+  ipcMain.handle(IPC.lmsSyncAll, (_e, params) => handlers.lmsSyncAll(params))
+  ipcMain.handle(IPC.zaloSendSession, (_e, request) => handlers.zaloSendSession(request))
+  ipcMain.handle(IPC.autoSendGetCatchUp, () => handlers.getAutoSendCatchUp())
+  ipcMain.handle(IPC.autoSendRunCatchUp, () => handlers.runAutoSendCatchUp())
 }
 
-app.whenReady().then(() => {
-  registerIpc()
+app.whenReady().then(async () => {
+  const scheduler = createAutoSendScheduler()
+  try {
+    await scheduler.initializeCatchUp()
+  } catch (err) {
+    console.error(`[AutoSend] Không khởi tạo được danh sách gửi bù: ${(err as Error).message}`)
+  }
+  registerIpc(scheduler)
   createWindow()
+  startAutoSendTimer(scheduler)
+  void scheduler.tick()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -47,4 +189,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  void Promise.all([lmsAutomator.close(), zaloAutomator.close()])
 })
