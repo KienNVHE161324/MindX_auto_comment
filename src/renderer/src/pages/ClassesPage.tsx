@@ -260,16 +260,13 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     }
   }
 
-  const allStatuses = Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]
-  const statusFilterValue =
-    classFilters.statuses.size === 1 ? [...classFilters.statuses][0] : 'all'
-  const selectStatus = (value: string): void => {
-    setClassFilters(current => ({
-      ...current,
-      statuses: value === 'all'
-        ? new Set(allStatuses)
-        : new Set([value as ClassStatus]),
-    }))
+  const toggleStatus = (status: ClassStatus): void => {
+    setClassFilters(current => {
+      const statuses = new Set(current.statuses)
+      if (statuses.has(status)) statuses.delete(status)
+      else statuses.add(status)
+      return { ...current, statuses }
+    })
   }
 
   const toggleProgram = (program: NamedClassProgram): void => {
@@ -391,24 +388,24 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
       )}
 
       <div className="card card-pad class-filter-bar">
-        <div className="class-filter-group">
+        <div className="class-filter-group statuses">
           <strong>Trạng thái</strong>
-          <select
-            className="input input-auto class-filter-select"
-            aria-label="Lọc theo trạng thái"
-            value={statusFilterValue}
-            onChange={e => selectStatus(e.target.value)}
-          >
-            <option value="all">Tất cả</option>
-            {(Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]).map(status => (
-              <option key={status} value={status}>{STATUS_FILTER_LABEL[status]}</option>
-            ))}
-          </select>
+          {(Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]).map(status => (
+            <label className="filter-text" key={status}>
+              <input
+                type="checkbox"
+                aria-label={`Lọc trạng thái ${STATUS_FILTER_LABEL[status]}`}
+                checked={classFilters.statuses.has(status)}
+                onChange={() => toggleStatus(status)}
+              />
+              {STATUS_FILTER_LABEL[status]}
+            </label>
+          ))}
         </div>
         <div className="class-filter-group programs">
           <strong>Loại lớp</strong>
           {ALL_CLASS_PROGRAMS.map(program => (
-            <label className="check compact" key={program}>
+            <label className="filter-chip" key={program}>
               <input
                 type="checkbox"
                 aria-label={`Lọc loại ${PROGRAM_FILTER_LABEL[program]}`}
