@@ -78,7 +78,9 @@ export function getStudentCommentModeFromAriaLabel(
 }
 
 export function getStudentCommentInitialEditorWaitMs(): number {
-  return 8000
+  // Popup HS ĐẦU TIÊN render "nguội" nên editor có thể mất >8s; cho rộng thời gian
+  // để không phải rơi vào fallback click vùng comment (dễ treo nếu DOM khác kỳ vọng).
+  return 15000
 }
 
 export async function isStudentCommentSaveConfirmed(
@@ -700,8 +702,16 @@ export class LmsAutomator {
           .then(() => true)
           .catch(() => false)
         if (!editorRendered) {
+          // Fallback: click vùng comment để mở editor. Chờ có phần tử tối đa 5s rồi mới
+          // click — tránh locator.evaluate treo 30s (default) khi popup không có 'table td p'.
           const commentArea = activePopup.locator('table td p').first()
-          await commentArea.evaluate(element => (element as HTMLElement).click())
+          const areaReady = await commentArea
+            .waitFor({ state: 'visible', timeout: 5000 })
+            .then(() => true)
+            .catch(() => false)
+          if (areaReady) {
+            await commentArea.evaluate(element => (element as HTMLElement).click()).catch(() => {})
+          }
         }
 
         try {

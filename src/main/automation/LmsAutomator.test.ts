@@ -169,7 +169,7 @@ describe('getStudentCommentModeFromAriaLabel', () => {
 
 describe('getStudentCommentInitialEditorWaitMs', () => {
   it('cho Area editor đủ thời gian render trước khi thử click vùng hiển thị', () => {
-    expect(getStudentCommentInitialEditorWaitMs()).toBe(8000)
+    expect(getStudentCommentInitialEditorWaitMs()).toBe(15000)
   })
 })
 
