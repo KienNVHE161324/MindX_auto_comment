@@ -260,13 +260,14 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
     }
   }
 
-  const toggleStatus = (status: ClassStatus): void => {
-    setClassFilters(current => {
-      const statuses = new Set(current.statuses)
-      if (statuses.has(status)) statuses.delete(status)
-      else statuses.add(status)
-      return { ...current, statuses }
-    })
+  const allStatuses = Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]
+  const statusFilterValue =
+    classFilters.statuses.size === 1 ? [...classFilters.statuses][0] : 'all'
+  const selectStatus = (value: string): void => {
+    setClassFilters(current => ({
+      ...current,
+      statuses: value === 'all' ? new Set(allStatuses) : new Set([value as ClassStatus]),
+    }))
   }
 
   const toggleProgram = (program: NamedClassProgram): void => {
@@ -388,19 +389,19 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
       )}
 
       <div className="card card-pad class-filter-bar">
-        <div className="class-filter-group statuses">
+        <div className="class-filter-group">
           <strong>Trạng thái</strong>
-          {(Object.keys(STATUS_FILTER_LABEL) as ClassStatus[]).map(status => (
-            <label className="filter-text" key={status}>
-              <input
-                type="checkbox"
-                aria-label={`Lọc trạng thái ${STATUS_FILTER_LABEL[status]}`}
-                checked={classFilters.statuses.has(status)}
-                onChange={() => toggleStatus(status)}
-              />
-              {STATUS_FILTER_LABEL[status]}
-            </label>
-          ))}
+          <select
+            className="input input-auto class-filter-select"
+            aria-label="Lọc theo trạng thái"
+            value={statusFilterValue}
+            onChange={e => selectStatus(e.target.value)}
+          >
+            <option value="all">Tất cả</option>
+            {allStatuses.map(status => (
+              <option key={status} value={status}>{STATUS_FILTER_LABEL[status]}</option>
+            ))}
+          </select>
         </div>
         <div className="class-filter-group programs">
           <strong>Loại lớp</strong>
@@ -464,53 +465,53 @@ export default function ClassesPage({ active = true }: { active?: boolean }): JS
                 </div>
               </div>
               <div className="btn-row">
-                <div className="auto-send-controls" aria-label={`Lịch tự động ${c.code}`}>
-                  <span className="auto-send-caption">Tự động gửi</span>
-                  <select
-                    className="input input-auto auto-send-day"
-                    aria-label={`Ngày gửi tự động ${c.code}`}
-                    value={c.autoSend?.dayOffset ?? 'same'}
-                    disabled={savingSchedules.has(c.id)}
-                    onChange={event => void saveSchedule(c, {
-                      dayOffset: event.target.value as 'same' | 'next',
-                    })}
-                  >
-                    <option value="same">cùng ngày buổi học</option>
-                    <option value="next">ngày hôm sau buổi học</option>
-                  </select>
-                  <span className="auto-send-caption">lúc</span>
-                  <input
-                    type="time"
-                    className="input input-auto auto-send-time"
-                    aria-label={`Giờ tự động ${c.code}`}
-                    value={c.autoSend?.time ?? '18:00'}
-                    disabled={savingSchedules.has(c.id)}
-                    onChange={event => void saveSchedule(c, { time: event.target.value })}
-                  />
-                  <label className="check compact">
-                    <input
-                      type="checkbox"
-                      aria-label={`Tự động LMS ${c.code}`}
-                      checked={c.autoSend?.lmsEnabled ?? false}
-                      disabled={savingSchedules.has(c.id)}
-                      onChange={event => void saveSchedule(c, { lmsEnabled: event.target.checked })}
-                    />
-                    LMS
-                  </label>
-                  <label className="check compact">
-                    <input
-                      type="checkbox"
-                      aria-label={`Tự động Zalo ${c.code}`}
-                      checked={c.autoSend?.zaloEnabled ?? false}
-                      disabled={savingSchedules.has(c.id)}
-                      onChange={event => void saveSchedule(c, { zaloEnabled: event.target.checked })}
-                    />
-                    Zalo
-                  </label>
-                </div>
                 <button className="btn btn-icon-box" aria-label={`Sửa lớp ${c.code}`} title="Sửa lớp" onClick={() => setEditing(c)}><EditIcon /></button>
                 <button className="btn btn-icon-box danger" aria-label={`Xóa lớp ${c.code}`} title="Xóa lớp" onClick={() => setPendingDelete(c)}><TrashIcon /></button>
               </div>
+            </div>
+
+            <div className="auto-send-row" aria-label={`Lịch tự động ${c.code}`}>
+              <span className="auto-send-caption">Tự động gửi</span>
+              <label className="check compact">
+                <input
+                  type="checkbox"
+                  aria-label={`Tự động LMS ${c.code}`}
+                  checked={c.autoSend?.lmsEnabled ?? false}
+                  disabled={savingSchedules.has(c.id)}
+                  onChange={event => void saveSchedule(c, { lmsEnabled: event.target.checked })}
+                />
+                LMS
+              </label>
+              <label className="check compact">
+                <input
+                  type="checkbox"
+                  aria-label={`Tự động Zalo ${c.code}`}
+                  checked={c.autoSend?.zaloEnabled ?? false}
+                  disabled={savingSchedules.has(c.id)}
+                  onChange={event => void saveSchedule(c, { zaloEnabled: event.target.checked })}
+                />
+                Zalo
+              </label>
+              <input
+                type="time"
+                className="input input-auto auto-send-time"
+                aria-label={`Giờ tự động ${c.code}`}
+                value={c.autoSend?.time ?? '18:00'}
+                disabled={savingSchedules.has(c.id)}
+                onChange={event => void saveSchedule(c, { time: event.target.value })}
+              />
+              <select
+                className="input input-auto auto-send-day"
+                aria-label={`Ngày gửi tự động ${c.code}`}
+                value={c.autoSend?.dayOffset ?? 'same'}
+                disabled={savingSchedules.has(c.id)}
+                onChange={event => void saveSchedule(c, {
+                  dayOffset: event.target.value as 'same' | 'next',
+                })}
+              >
+                <option value="same">cùng ngày buổi học</option>
+                <option value="next">ngày hôm sau buổi học</option>
+              </select>
             </div>
             {c.sessions.length > 0 && (
               <>

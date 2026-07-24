@@ -312,40 +312,46 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .stack { display: flex; flex-direction: column; gap: 10px; }
 .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .divider { height: 1px; background: var(--border); border: none; margin: 14px 0; }
-.auto-send-controls {
-  display: inline-flex;
+/* Dòng "Tự động gửi" riêng dưới tên lớp */
+.auto-send-row {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 .auto-send-caption {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-faint);
+  color: var(--text-muted);
   white-space: nowrap;
   margin-right: 2px;
 }
 
-.auto-send-controls .check.compact {
+.auto-send-row .check.compact {
   margin: 0;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
   color: var(--text-muted);
-  transition: background .12s, color .12s;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: background .12s, color .12s, border-color .12s;
 }
-.auto-send-controls .check.compact input {
+.auto-send-row .check.compact input {
   width: 13px;
   height: 13px;
 }
-.auto-send-controls .check.compact:has(input:checked) {
+.auto-send-row .check.compact:has(input:checked) {
   background: var(--primary-soft);
+  border-color: var(--primary);
   color: var(--primary-hover);
 }
 
@@ -405,16 +411,25 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .class-filter-bar {
   display: flex;
   align-items: center;
-  gap: 12px 24px;
-  flex-wrap: wrap;
+  gap: 20px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   margin-bottom: 14px;
+}
+
+.class-filter-select {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  height: 30px;
 }
 
 .class-filter-group {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .class-filter-group > strong {
@@ -475,6 +490,7 @@ h3 { font-size: 14px; font-weight: 650; margin: 0 0 10px; color: var(--text); }
 .class-filter-count {
   margin-left: auto;
   color: var(--text-faint);
-  font-size: 13px;
-  font-weight: 550;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }

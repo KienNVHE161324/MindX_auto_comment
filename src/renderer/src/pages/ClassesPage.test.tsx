@@ -62,11 +62,11 @@ const filterClassesFixture: SchoolClass[] = [
 ]
 
 async function enableNotStartedClasses() {
-  fireEvent.click(await screen.findByLabelText('Lọc trạng thái Chưa bắt đầu'))
+  fireEvent.change(await screen.findByLabelText('Lọc theo trạng thái'), { target: { value: 'all' } })
 }
 
 async function enableEndedClasses() {
-  fireEvent.click(await screen.findByLabelText('Lọc trạng thái Đã kết thúc'))
+  fireEvent.change(await screen.findByLabelText('Lọc theo trạng thái'), { target: { value: 'all' } })
 }
 
 describe('ClassesPage', () => {
@@ -91,10 +91,9 @@ describe('ClassesPage', () => {
     render(<ClassesPage />)
     await screen.findByText('ABC-R01')
 
-    fireEvent.click(screen.getByLabelText('Lọc trạng thái Chưa bắt đầu'))
-    fireEvent.click(screen.getByLabelText('Lọc loại Robotics'))
-    fireEvent.click(screen.getByLabelText('Lọc loại Web'))
-    fireEvent.click(screen.getByLabelText('Lọc loại Scratch'))
+    fireEvent.change(screen.getByLabelText('Lọc theo trạng thái'), {
+      target: { value: 'chưa bắt đầu' },
+    })
 
     expect(screen.getByText('ABC-G01')).toBeInTheDocument()
     expect(screen.queryByText('ABC-R01')).not.toBeInTheDocument()
@@ -109,7 +108,10 @@ describe('ClassesPage', () => {
     render(<ClassesPage />)
     await screen.findByText('ABC-R01')
 
-    fireEvent.click(screen.getByLabelText('Lọc trạng thái Đang diễn ra'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Robotics'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Game'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Web'))
+    fireEvent.click(screen.getByLabelText('Lọc loại Scratch'))
 
     expect(screen.getByText('Không có lớp phù hợp với bộ lọc.')).toBeInTheDocument()
     expect(screen.queryByText('Chưa có lớp nào.')).not.toBeInTheDocument()
