@@ -91,7 +91,7 @@ export function buildZaloMessage(
     ngay_buoi_hoc: formatSessionDate(session.dateTime),
     noi_dung_bai_hoc: content.lessonContent,
     danh_sach_nhan_xet: formatCommentLines(
-      cls.students.map(s => ({
+      cls.students.filter(s => !s.droppedOut).map(s => ({
         name: s.name,
         text: absentIds.has(s.id)
           ? 'nghỉ'

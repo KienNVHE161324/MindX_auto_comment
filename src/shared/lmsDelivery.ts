@@ -15,6 +15,25 @@ export interface LmsDeliveryAssessment {
 const normalizeName = (value: string): string =>
   value.normalize('NFC').replace(/\s+/g, ' ').trim().toLocaleLowerCase('vi')
 
+/**
+ * Điều kiện cho phép gửi Zalo: mọi HS còn học (không nghỉ dài hạn) phải đã biết
+ * trạng thái — đi học (attendedStudentIds) hoặc nghỉ buổi (absentStudentIds).
+ * Lỗi kỹ thuật khi post nhận xét không ảnh hưởng vì điểm danh đọc riêng.
+ */
+export function assessZaloReadiness(
+  students: Student[],
+  content: { absentStudentIds?: string[]; attendedStudentIds?: string[] },
+): { ready: boolean; unknownStudentNames: string[] } {
+  const handled = new Set([
+    ...(content.attendedStudentIds ?? []),
+    ...(content.absentStudentIds ?? []),
+  ])
+  const unknownStudentNames = students
+    .filter(student => !student.droppedOut && !handled.has(student.id))
+    .map(student => student.name)
+  return { ready: unknownStudentNames.length === 0, unknownStudentNames }
+}
+
 export function assessLmsDelivery(
   students: Student[],
   result: LmsPostResult,

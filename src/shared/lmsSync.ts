@@ -40,8 +40,11 @@ export function computeContentTargets(
       .filter(s => new Date(s.dateTime) < now)
       .sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime())
 
+    // Lấy buổi gần nhất đã qua của MỌI lớp đang diễn ra — kể cả buổi đã có nội dung,
+    // để cập nhật điểm danh + phát hiện nghỉ dài hạn (hasContent chỉ còn tham khảo).
     const latest = past[0]
-    if (!latest || hasContent(latest.id)) continue
+    if (!latest) continue
+    void hasContent
 
     targets.push({
       classCode: cls.code,
@@ -97,31 +100,63 @@ export function excludeAbsentSkipped(skipped: string[], absentNames: string[]): 
     .map(candidate => candidate.text)
 }
 
+/**
+ * Gộp kết quả LMS vào nội dung buổi.
+ * - Không có `existing` (buổi chưa có trong app): lấy toàn bộ từ LMS.
+ * - Có `existing` với nội dung đã soạn: GIỮ nội dung bài học + nhận xét của app,
+ *   chỉ cập nhật điểm danh (`attendedStudentIds`/`absentStudentIds`) từ LMS.
+ */
 export function mergeContentResult(
   cls: SchoolClass,
   session: ClassSession,
   result: LmsContentResult,
+  existing?: SessionContent,
 ): SessionContent {
-  const comments: SessionContent['comments'] = []
+  const lmsComments: SessionContent['comments'] = []
   const absentStudentIds: string[] = []
+  const attendedStudentIds: string[] = []
 
   for (const s of result.students) {
     const student = matchStudentByName(cls.students, s.name)
     if (!student) continue
     if (s.attended) {
-      comments.push({ studentId: student.id, raw: s.comment, polished: s.comment })
+      attendedStudentIds.push(student.id)
+      lmsComments.push({ studentId: student.id, raw: s.comment, polished: s.comment })
     } else {
       absentStudentIds.push(student.id)
     }
   }
 
+  const hasAppContent = Boolean(
+    existing && (existing.lessonContent.trim() !== '' || existing.comments.length > 0),
+  )
+
   return {
     id: session.id,
     classId: cls.id,
     sessionId: session.id,
-    lessonContent: result.lessonContent,
-    homework: result.homework,
-    comments,
+    lessonContent: hasAppContent ? existing!.lessonContent : result.lessonContent,
+    homework: hasAppContent ? existing!.homework : result.homework,
+    comments: hasAppContent ? existing!.comments : lmsComments,
     absentStudentIds,
+    attendedStudentIds,
+    ...(existing?.lmsPostedStudentIds ? { lmsPostedStudentIds: existing.lmsPostedStudentIds } : {}),
+    ...(existing?.postedToLms ? { postedToLms: existing.postedToLms } : {}),
+    ...(existing?.zaloSentAt ? { zaloSentAt: existing.zaloSentAt } : {}),
   }
+}
+
+/**
+ * Đối chiếu roster app với danh sách tên trên LMS.
+ * HS không khớp tên LMS nào → nghỉ dài hạn (droppedOut:true); khớp → false.
+ */
+export function detectDroppedOut(
+  students: Student[],
+  lmsNames: string[],
+): { id: string; droppedOut: boolean }[] {
+  const lmsNameSet = new Set(lmsNames.map(normalizeStudentName))
+  return students.map(student => ({
+    id: student.id,
+    droppedOut: !lmsNameSet.has(normalizeStudentName(student.name)),
+  }))
 }

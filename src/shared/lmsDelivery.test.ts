@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest'
-import { assessLmsDelivery } from './lmsDelivery'
+import { assessLmsDelivery, assessZaloReadiness } from './lmsDelivery'
 
 const students = [
   { id: 's1', name: 'Lương Ngọc Việt' },
   { id: 's2', name: 'Nguyễn Sách Sâm' },
 ]
+
+describe('assessZaloReadiness', () => {
+  it('sẵn sàng khi mọi HS đã biết đi học hoặc nghỉ', () => {
+    expect(assessZaloReadiness(students, {
+      attendedStudentIds: ['s1'],
+      absentStudentIds: ['s2'],
+    })).toEqual({ ready: true, unknownStudentNames: [] })
+  })
+
+  it('chặn khi còn HS chưa rõ trạng thái', () => {
+    expect(assessZaloReadiness(students, {
+      attendedStudentIds: ['s1'],
+      absentStudentIds: [],
+    })).toEqual({ ready: false, unknownStudentNames: ['Nguyễn Sách Sâm'] })
+  })
+
+  it('bỏ qua HS nghỉ dài hạn (droppedOut)', () => {
+    const roster = [
+      { id: 's1', name: 'Lương Ngọc Việt' },
+      { id: 's2', name: 'Nguyễn Sách Sâm', droppedOut: true },
+    ]
+    expect(assessZaloReadiness(roster, {
+      attendedStudentIds: ['s1'],
+      absentStudentIds: [],
+    })).toEqual({ ready: true, unknownStudentNames: [] })
+  })
+})
 
 describe('assessLmsDelivery', () => {
   it('allows Zalo when every student is posted or explicitly absent', () => {

@@ -166,4 +166,24 @@ describe('buildZaloMessage', () => {
     expect(msg).toContain('Bình: nghỉ')
     expect(msg).toContain('Làm bài 5')
   })
+
+  it('loại HS nghỉ dài hạn (droppedOut) khỏi danh sách nhận xét', () => {
+    const cls: SchoolClass = {
+      id: 'c1', code: 'A1', name: 'Lớp A1',
+      students: [
+        { id: 's1', name: 'An' },
+        { id: 's2', name: 'Bình', droppedOut: true },
+      ],
+      sessions: [],
+    }
+    const session: ClassSession = { id: 'ss1', dateTime: '2026-07-10T14:00:00' }
+    const content: SessionContent = {
+      id: 'ss1', classId: 'c1', sessionId: 'ss1',
+      lessonContent: 'Phép cộng', homework: '',
+      comments: [{ studentId: 's1', raw: 'ngoan', polished: '' }],
+    }
+    const msg = buildZaloMessage(cls, session, content, '{danh_sach_nhan_xet}')
+    expect(msg).toContain('An: ngoan')
+    expect(msg).not.toContain('Bình')
+  })
 })

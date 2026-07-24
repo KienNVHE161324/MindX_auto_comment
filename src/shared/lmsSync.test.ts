@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   computeContentTargets,
+  detectDroppedOut,
   excludeAbsentSkipped,
   matchStudentByName,
   mergeAbsentStudentNames,
@@ -28,7 +29,7 @@ describe('computeContentTargets', () => {
     expect(computeContentTargets([cls], () => false, now)).toEqual([])
   })
 
-  it('buổi gần nhất đã qua và đã có content -> không có target', () => {
+  it('buổi gần nhất đã qua dù ĐÃ có content vẫn trả target (để cập nhật điểm danh)', () => {
     const cls: SchoolClass = {
       id: 'c1', code: 'A1', name: 'A1', students: [],
       sessions: [
@@ -36,7 +37,9 @@ describe('computeContentTargets', () => {
         { id: 'ss2', dateTime: '2026-08-01T14:00:00' },
       ],
     }
-    expect(computeContentTargets([cls], id => id === 'ss1', now)).toEqual([])
+    expect(computeContentTargets([cls], () => true, now)).toEqual([
+      { classCode: 'A1', sessionId: 'ss1', sessionDate: '2026-07-01' },
+    ])
   })
 
   it('buổi gần nhất đã qua chưa có content -> trả về target đúng buổi đó', () => {
@@ -171,7 +174,30 @@ describe('mergeContentResult', () => {
       lessonContent: 'Bài học', homework: 'BT',
       comments: [{ studentId: 's1', raw: 'Ngoan', polished: 'Ngoan' }],
       absentStudentIds: [],
+      attendedStudentIds: ['s1'],
     })
+  })
+
+  it('có existing nội dung app -> giữ bài học + nhận xét, chỉ cập nhật điểm danh', () => {
+    const result: LmsContentResult = {
+      classCode: 'A1', sessionDate: '2026-07-10',
+      lessonContent: 'Bài từ LMS', homework: 'BT LMS',
+      students: [
+        { name: 'An', attended: true, comment: 'Nhận xét LMS' },
+        { name: 'Bình', attended: false, comment: '' },
+      ],
+    }
+    const existing = {
+      id: 'ss1', classId: 'c1', sessionId: 'ss1',
+      lessonContent: 'Bài do người dùng soạn', homework: 'BT app',
+      comments: [{ studentId: 's1', raw: 'Nháp app', polished: '' }],
+    }
+    const content = mergeContentResult(cls, session, result, existing)
+    expect(content.lessonContent).toBe('Bài do người dùng soạn')
+    expect(content.homework).toBe('BT app')
+    expect(content.comments).toEqual([{ studentId: 's1', raw: 'Nháp app', polished: '' }])
+    expect(content.attendedStudentIds).toEqual(['s1'])
+    expect(content.absentStudentIds).toEqual(['s2'])
   })
 
   it('HS nghỉ -> vào absentStudentIds, không có StudentComment', () => {
@@ -218,5 +244,26 @@ describe('mergeContentResult', () => {
     const content = mergeContentResult(ambiguousClass, session, result)
     expect(content.comments).toEqual([])
     expect(content.absentStudentIds).toEqual([])
+  })
+})
+
+describe('detectDroppedOut', () => {
+  const students = [
+    { id: 's1', name: 'An' },
+    { id: 's2', name: 'Bình' },
+  ]
+
+  it('HS không còn trên LMS -> droppedOut:true; còn trên LMS -> false', () => {
+    expect(detectDroppedOut(students, ['An'])).toEqual([
+      { id: 's1', droppedOut: false },
+      { id: 's2', droppedOut: true },
+    ])
+  })
+
+  it('khớp tên không phân biệt hoa thường/khoảng trắng', () => {
+    expect(detectDroppedOut(students, ['  an  ', 'BÌNH'])).toEqual([
+      { id: 's1', droppedOut: false },
+      { id: 's2', droppedOut: false },
+    ])
   })
 })
